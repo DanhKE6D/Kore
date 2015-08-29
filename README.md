@@ -5,6 +5,8 @@ GitHub repository for the [Kore][1] Android app.
 
 Kore is the official remote for [Kodi](http://kodi.tv/), and aims to be a simple and easy to use  remote.
 
+Note: this is a fork of the official Kore project to provide enhance support for playlist (view/select/load/save)
+
 
 Building
 ---------
@@ -27,6 +29,8 @@ Credits
 - [JmDNS](http://jmdns.sourceforge.net/)
 - [PagerSlidingTabStrip](https://github.com/astuetz/PagerSlidingTabStrip)
 - [FloatingActionButton](https://github.com/makovkastar/FloatingActionButton)
+- [Gson](https://github.com/google/gson)
+- [aFileDialog](https://github.com/jfmdev/afiledialog)
 
 **Translations**
 - French - Kowalski
