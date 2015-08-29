@@ -34,7 +34,7 @@ import java.util.List;
  * */
 public class Utils {
 
-    public static Gson sGsonInstance = new Gson();
+    static Gson sGsonInstance = new Gson();
 
     public static Gson getGson() { return sGsonInstance; }
     /**
