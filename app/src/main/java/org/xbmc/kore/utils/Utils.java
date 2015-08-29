@@ -25,6 +25,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.text.TextUtils;
 
+import com.google.gson.Gson;
+
 import java.util.List;
 
 /**
@@ -32,6 +34,9 @@ import java.util.List;
  * */
 public class Utils {
 
+    public static Gson sGsonInstance = new Gson();
+
+    public static Gson getGson() { return sGsonInstance; }
     /**
      * Returns whether the SDK is the Jellybean release or later.
      */

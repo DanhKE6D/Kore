@@ -15,6 +15,7 @@
  */
 package org.xbmc.kore.ui;
 
+import android.app.Dialog;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.os.Bundle;
@@ -22,6 +23,7 @@ import android.os.Handler;
 import android.support.v4.app.Fragment;
 import android.support.v7.widget.CardView;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -44,18 +46,23 @@ import org.xbmc.kore.host.HostInfo;
 import org.xbmc.kore.host.HostManager;
 import org.xbmc.kore.jsonrpc.ApiCallback;
 import org.xbmc.kore.jsonrpc.ApiMethod;
+import org.xbmc.kore.jsonrpc.method.GUI;
 import org.xbmc.kore.jsonrpc.method.Player;
 import org.xbmc.kore.jsonrpc.method.Playlist;
+import org.xbmc.kore.jsonrpc.type.GUIType;
 import org.xbmc.kore.jsonrpc.type.ListType;
 import org.xbmc.kore.jsonrpc.type.PlayerType;
 import org.xbmc.kore.jsonrpc.type.PlaylistType;
+import org.xbmc.kore.model.MediaPlayList;
+import org.xbmc.kore.utils.FileUtils;
 import org.xbmc.kore.utils.LogUtils;
 import org.xbmc.kore.utils.UIUtils;
 import org.xbmc.kore.utils.Utils;
 
-import java.util.ArrayList;
+import java.io.File;
 import java.util.List;
 
+import ar.com.daidalos.afiledialog.FileChooserDialog;
 import butterknife.ButterKnife;
 import butterknife.InjectView;
 
@@ -96,6 +103,16 @@ public class PlaylistFragment extends Fragment
      */
     private PlayListAdapter playListAdapter;
 
+    public enum PlaylistItemMode { None, ClearPlaylist, InsertToPlaylist }
+
+
+    PlaylistItemMode playlistItemMode = PlaylistItemMode.None;
+    MediaPlayList playlistToInsert = null;
+    int curPlaylistItem = 0;
+
+    public enum FileSelectionMode { None, FileLoad, FileSave}
+    FileSelectionMode fileSelectionMode = FileSelectionMode.None;
+
     /**
      * Injectable views
      */
@@ -117,10 +134,12 @@ public class PlaylistFragment extends Fragment
         super.onCreate(savedInstanceState);
         hostManager = HostManager.getInstance(getActivity());
         hostConnectionObserver = hostManager.getHostConnectionObserver();
+        FileUtils.playlistDirExisted();         // create default playlist directory if it does not already there
     }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        Log.d(TAG, "onCreateView()");
         ViewGroup root = (ViewGroup) inflater.inflate(R.layout.fragment_playlist, container, false);
         ButterKnife.inject(this, root);
 
@@ -171,11 +190,66 @@ public class PlaylistFragment extends Fragment
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
-            case R.id.action_clear_playlist:
+            case R.id.action_clear_playlist: {
                 Playlist.Clear action = new Playlist.Clear(currentPlaylistId);
                 action.execute(hostManager.getConnection(), defaultStringActionCallback, callbackHandler);
                 // If we are playing something, refresh playlist
                 forceRefreshPlaylist();
+                }
+                break;
+            case R.id.action_load_music_pl:
+                getPlaylistItems(PlaylistType.MUSIC_PLAYLISTID, false, lastGetItemResult);
+                break;
+            case R.id.action_load_video_pl:
+                getPlaylistItems(PlaylistType.VIDEO_PLAYLISTID, false, lastGetItemResult);
+                break;
+            case R.id.action_save_current_pl:
+                if ((currentPlaylistId != -1) && (playListAdapter.getCount() > 0)) {
+                    fileSelectionMode = FileSelectionMode.FileSave;
+                    FileChooserDialog dialog = new FileChooserDialog(getActivity());
+                    // Assign listener for the select event.
+                    dialog.addListener(PlaylistFragment.this.onFileSelectedListener);
+                    // Define start folder.
+                    dialog.loadFolder(FileUtils.getPlaylistDirectory());
+                    // Activate the button for create files.
+                    dialog.setCanCreateFiles(true);
+                    dialog.setShowConfirmation(true, true);
+                    dialog.show();
+                    // save it
+                    //MediaPlaylist mediaPlaylist = new MediaPlaylist(currentPlaylistId, playListAdapter.getPlaylistItems());
+                    //final String playlistGson =  Utils.getGson().toJson(mediaPlaylist).toString();
+                    //LogUtils.LOGD_FULL(TAG, "playlistGson = " + playlistGson);
+                    //final String playlistFileName = "videoPlaylist.json";
+                    //FileUtils.savePlaylistToFile(playlistFileName, currentPlaylistId, playlistGson);
+                }
+                break;
+            case R.id.action_load_pl_from_file: {
+                fileSelectionMode = FileSelectionMode.FileLoad;
+                FileChooserDialog dialog = new FileChooserDialog(getActivity());
+                // Assign listener for the select event.
+                dialog.addListener(PlaylistFragment.this.onFileSelectedListener);
+                // Define start folder.
+                dialog.loadFolder(FileUtils.getPlaylistDirectory());
+                dialog.setShowConfirmation(true, false);
+                dialog.show();
+                /*
+                final String playlistFileName = "videoPlaylist.json";
+                String playlistJSON = FileUtils.readFromFile(playlistFileName);
+                playlistToInsert = Utils.getGson().fromJson(playlistJSON, MediaPlaylist.class);
+                LogUtils.LOGD(TAG, "playlistType = " + playlistToInsert.playlistType + ", Number of items = " + playlistToInsert.playlist.size());
+                // If the selected playlist is not empty, clear the playlist, then push all the playlist item to the
+                // new playlist
+                if (playlistToInsert.playlist.size() > 0) {
+                    // first clear the requested playlistID
+                    playlistItemMode = PlaylistItemMode.ClearPlaylist;
+                    curPlaylistItem = 0;
+                    Playlist.Clear action = new Playlist.Clear(playlistToInsert.playlistType);
+                    action.execute(hostManager.getConnection(), playlistStringActionCallback, callbackHandler);
+                    // now when the callback for clear playlist comeback successfully, we go ahead and insert the
+                    // playlist items to kodi playlist one by one
+                    }
+                    */
+                }
                 break;
             default:
                 break;
@@ -183,6 +257,56 @@ public class PlaylistFragment extends Fragment
 
         return super.onOptionsItemSelected(item);
     }
+
+    // ---- Methods for display the results ----- //
+    private FileChooserDialog.OnFileSelectedListener onFileSelectedListener = new FileChooserDialog.OnFileSelectedListener() {
+        public void onFileSelected(Dialog source, File file) {
+            source.hide();
+            LogUtils.LOGD(TAG, "File selected: " + file.getName());
+            final String playlistFileName = file.getName();
+            if (fileSelectionMode == FileSelectionMode.FileLoad) {
+                String playlistJSON = FileUtils.readFromFile(file);
+                playlistToInsert = Utils.getGson().fromJson(playlistJSON, MediaPlayList.class);
+                LogUtils.LOGD(TAG, "playlistType = " + playlistToInsert.playlistType + ", Number of items = " + playlistToInsert.playlist.size());
+                // If the selected playlist is not empty, clear the playlist, then push all the playlist item to the
+                // new playlist
+                if (playlistToInsert.playlist.size() > 0) {
+                    // first clear the requested playlistID
+                    playlistItemMode = PlaylistItemMode.ClearPlaylist;
+                    curPlaylistItem = 0;
+                    Playlist.Clear action = new Playlist.Clear(playlistToInsert.playlistType);
+                    action.execute(hostManager.getConnection(), playlistStringActionCallback, callbackHandler);
+                    // now when the callback for clear playlist comeback successfully, we go ahead and insert the
+                    // playlist items to kodi playlist one by one
+                }
+
+            }
+            else if (fileSelectionMode == FileSelectionMode.FileSave) {
+                // save playlist
+                MediaPlayList mediaPlaylist = new MediaPlayList(currentPlaylistId, playListAdapter.getPlaylistItems());
+                final String playlistGson =  Utils.getGson().toJson(mediaPlaylist);
+                LogUtils.LOGD_FULL(TAG, "playlistGson = " + playlistGson);
+                FileUtils.savePlaylistToFile(file, playlistGson);
+            }
+
+
+        }
+        public void onFileSelected(Dialog source, File folder, String name) {
+            source.hide();
+            LogUtils.LOGD(TAG, "File created: " + folder.getName() + "/" + name);
+            File newFile = new File(FileUtils.getPlaylistDirectory() + "/" + folder.getName() + "/" + name);
+            //Toast toast = Toast.makeText(getActivity(), "File created: " + folder.getName() + "/" + name, Toast.LENGTH_LONG);
+            //toast.show();
+            // can not be read from file -- we are creating new one
+            if (fileSelectionMode == FileSelectionMode.FileSave) {
+                // save it
+                MediaPlayList mediaPlaylist = new MediaPlayList(currentPlaylistId, playListAdapter.getPlaylistItems());
+                final String playlistGson =  Utils.getGson().toJson(mediaPlaylist);
+                LogUtils.LOGD_FULL(TAG, "playlistGson = " + playlistGson);
+                FileUtils.savePlaylistToFile(newFile, playlistGson);
+            }
+        }
+    };
 
 //    @Override
 //    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenu.ContextMenuInfo menuInfo) {
@@ -206,17 +330,91 @@ public class PlaylistFragment extends Fragment
 //        return super.onContextItemSelected(item);
 //    }
 
-    public void forceRefreshPlaylist() {
+    void forceRefreshPlaylist() {
         // If we are playing something, refresh playlist
-        if ((lastCallResult == PLAYER_IS_PLAYING) || (lastCallResult == PLAYER_IS_PAUSED)) {
+        //if ((lastCallResult == PLAYER_IS_PLAYING) || (lastCallResult == PLAYER_IS_PAUSED)) {
             setupPlaylistInfo(lastGetActivePlayerResult, lastGetPropertiesResult, lastGetItemResult);
-        }
+        //}
     }
+
+    void switchToFullScreen() {
+        final GUI.GetProperties action = new GUI.GetProperties(GUI.GetProperties.FULLSCREEN);
+        action.execute(hostManager.getConnection(), new ApiCallback<GUIType.PropertyValue>() {
+            @Override
+            public void onSuccess(GUIType.PropertyValue result) {
+                if (!result.fullscreen) {
+                    // switch to fullscreen
+                    GUI.SetFullscreen actionSetFullscreen = new GUI.SetFullscreen();
+                    actionSetFullscreen.execute(hostManager.getConnection(), null, null);
+                }
+            }
+            @Override
+            public void onError(int errorCode, String description) {
+                // got an error, abort everything
+                LogUtils.LOGE(TAG, "Callback error, code = " + errorCode + ", description = " + description);
+            }
+        }, callbackHandler);
+    }
+
 
     /**
      * Default callback for methods that don't return anything
      */
     private ApiCallback<String> defaultStringActionCallback = ApiMethod.getDefaultActionCallback();
+
+    /**
+     * Callback for clear and insert items to playlist
+     */
+    private ApiCallback<String> playlistStringActionCallback = new ApiCallback<String>() {
+        @Override
+        public void onSuccess(String result) {
+            if (playlistItemMode == PlaylistItemMode.ClearPlaylist) {
+                // clear playlist is successful, now insert the first item from our playlist to kodi playlist
+                LogUtils.LOGD(TAG, "Clear playlist successful");
+                playlistItemMode = PlaylistItemMode.InsertToPlaylist;       // advance to next state
+                PlaylistType.Item item = new PlaylistType.Item();
+                item.file = playlistToInsert.playlist.get(curPlaylistItem).file;
+                LogUtils.LOGD(TAG, "Now inserting item: " + item.file);
+                curPlaylistItem++;
+                Playlist.Add action = new Playlist.Add(playlistToInsert.playlistType, item);
+                action.execute(hostManager.getConnection(), playlistStringActionCallback, callbackHandler);
+
+            }
+            else if (playlistItemMode == PlaylistItemMode.InsertToPlaylist) {
+                LogUtils.LOGD(TAG, "Clear playlist successful");
+                // insert the next one until the end of the list
+                if (curPlaylistItem < playlistToInsert.playlist.size()) {
+                    PlaylistType.Item item = new PlaylistType.Item();
+                    item.file = playlistToInsert.playlist.get(curPlaylistItem).file;
+                    LogUtils.LOGD(TAG, "Inserting item: " + item.file);
+                    curPlaylistItem++;
+                    Playlist.Add action = new Playlist.Add(playlistToInsert.playlistType, item);
+                    action.execute(hostManager.getConnection(), playlistStringActionCallback, callbackHandler);
+
+                }
+                else {
+                    // done inserting all the items from requested playlist
+                    LogUtils.LOGD(TAG, "Done inserting playlist item");
+                    currentPlaylistId = playlistToInsert.playlistType;
+                    playlistToInsert = null;
+                    curPlaylistItem = 0;
+                    // start playing the first item in the playlist
+                    Player.Open action = new Player.Open(Player.Open.TYPE_PLAYLIST, currentPlaylistId, 0);
+                    action.execute(hostManager.getConnection(), defaultStringActionCallback, callbackHandler);
+                    // update the playlist
+                    forceRefreshPlaylist();
+                }
+            }
+
+        }
+
+        @Override
+        public void onError(int errorCode, String description) {
+            // got an error, abort everything
+            LogUtils.LOGE(TAG, "Callback error, code = " + errorCode + ", description = " + description);
+            // TODO: need to deal with error during clear and insert item to playlist
+        }
+    };
 
 //    /**
 //     * Callback for methods that change the play speed
@@ -305,6 +503,7 @@ public class PlaylistFragment extends Fragment
         lastGetActivePlayerResult = getActivePlayerResult;
         lastGetPropertiesResult = getPropertiesResult;
         lastGetItemResult = getItemResult;
+        switchToFullScreen();
     }
 
     public void playerOnPause(PlayerType.GetActivePlayersReturnType getActivePlayerResult,
@@ -330,11 +529,13 @@ public class PlaylistFragment extends Fragment
     }
 
     public void playerOnStop() {
-        HostInfo hostInfo = hostManager.getHostInfo();
-        switchToPanel(R.id.info_panel);
-        infoTitle.setText(R.string.nothing_playing);
-        infoMessage.setText(String.format(getString(R.string.connected_to), hostInfo.getName()));
-
+        Log.d(TAG, "playerOnStop(): currentPlaylistId = " + currentPlaylistId);
+        // 20150809 - DanhDroid: What we want to do is if currentPlaylistId == -1, check to see
+        // if the player is playing anything. If it is NOT PLAYING, read the Music and Video Playlist
+        // then display one of them
+        // If both are empty, then displayEmptyPlaylistMessage(). If the player is playing, do not
+        // do anything
+        getPlaylistItems((currentPlaylistId == -1) ? PlaylistType.MUSIC_PLAYLISTID : currentPlaylistId, true, lastGetItemResult);
         lastCallResult = PLAYER_IS_STOPPED;
     }
 
@@ -381,51 +582,58 @@ public class PlaylistFragment extends Fragment
     private void setupPlaylistInfo(final PlayerType.GetActivePlayersReturnType getActivePlayerResult,
                                    final PlayerType.PropertyValue getPropertiesResult,
                                    final ListType.ItemsAll getItemResult) {
-
-        currentPlaylistId = getPropertiesResult.playlistid;
-
+        Log.d(TAG, "setupPlaylistInfo(): currentPlaylistId = " + currentPlaylistId);
+        if (getPropertiesResult != null) {
+            currentPlaylistId = getPropertiesResult.playlistid;
+        }
         if (currentPlaylistId == -1) {
             // Couldn't find a playlist of the same type, just report empty
             displayEmptyPlaylistMessage();
         } else {
-            // Call GetItems
-            String[] propertiesToGet = new String[] {
-                    ListType.FieldsAll.ART,
-                    ListType.FieldsAll.ARTIST,
-                    ListType.FieldsAll.ALBUMARTIST,
-                    ListType.FieldsAll.ALBUM,
-                    ListType.FieldsAll.DISPLAYARTIST,
-                    ListType.FieldsAll.EPISODE,
-                    ListType.FieldsAll.FANART,
-                    ListType.FieldsAll.FILE,
-                    ListType.FieldsAll.SEASON,
-                    ListType.FieldsAll.SHOWTITLE,
-                    ListType.FieldsAll.STUDIO,
-                    ListType.FieldsAll.TAGLINE,
-                    ListType.FieldsAll.THUMBNAIL,
-                    ListType.FieldsAll.TITLE,
-                    ListType.FieldsAll.TRACK,
-                    ListType.FieldsAll.DURATION,
-                    ListType.FieldsAll.RUNTIME,
-            };
-            Playlist.GetItems getItems = new Playlist.GetItems(currentPlaylistId, propertiesToGet);
-            getItems.execute(hostManager.getConnection(), new ApiCallback<List<ListType.ItemsAll>>() {
-                @Override
-                public void onSuccess(List<ListType.ItemsAll> result) {
-                    if (!isAdded()) return;
-                    // Ok, we've got all the info, save and display playlist
-                    lastGetPlaylistItemsResult = result;
-                    displayPlaylist(getItemResult, result);
-                }
-
-                @Override
-                public void onError(int errorCode, String description) {
-                    if (!isAdded()) return;
-                    // Oops
-                    displayErrorGettingPlaylistMessage(description);
-                }
-            }, callbackHandler);
+            getPlaylistItems(currentPlaylistId, false, getItemResult);
         }
+    }
+
+    private void getPlaylistItems(final int playlistID, boolean searchForNonEmptyList, final ListType.ItemsAll getItemResult) {
+        Log.d(TAG, "getPlaylistItems(): playlistID = " + playlistID + ", searchForNoEmpty = " + searchForNonEmptyList);
+        // Call GetItems
+        String[] propertiesToGet = new String[] {
+                ListType.FieldsAll.ART,
+                ListType.FieldsAll.ARTIST,
+                ListType.FieldsAll.ALBUMARTIST,
+                ListType.FieldsAll.ALBUM,
+                ListType.FieldsAll.DISPLAYARTIST,
+                ListType.FieldsAll.EPISODE,
+                ListType.FieldsAll.FANART,
+                ListType.FieldsAll.FILE,
+                ListType.FieldsAll.SEASON,
+                ListType.FieldsAll.SHOWTITLE,
+                ListType.FieldsAll.STUDIO,
+                ListType.FieldsAll.TAGLINE,
+                ListType.FieldsAll.THUMBNAIL,
+                ListType.FieldsAll.TITLE,
+                ListType.FieldsAll.TRACK,
+                ListType.FieldsAll.DURATION,
+                ListType.FieldsAll.RUNTIME,
+        };
+        Playlist.GetItems getItems = new Playlist.GetItems(playlistID, propertiesToGet);
+        getItems.execute(hostManager.getConnection(), new ApiCallback<List<ListType.ItemsAll>>() {
+            @Override
+            public void onSuccess(List<ListType.ItemsAll> result) {
+                if (!isAdded()) return;
+                // Ok, we've got all the info, save and display playlist
+                lastGetPlaylistItemsResult = result;
+                currentPlaylistId = playlistID;     // successful, keep this as our playlistID
+                displayPlaylist(getItemResult, result);
+            }
+
+            @Override
+            public void onError(int errorCode, String description) {
+                if (!isAdded()) return;
+                // Oops
+                displayErrorGettingPlaylistMessage(description);
+            }
+        }, callbackHandler);
     }
 
     private void displayPlaylist(final ListType.ItemsAll getItemResult,
@@ -440,10 +648,12 @@ public class PlaylistFragment extends Fragment
         playListAdapter.setPlaylistItems(playlistItems);
         // Present the checked item
         for (int i = 0; i < playlistItems.size(); i++) {
-            if ((playlistItems.get(i).id == getItemResult.id) &&
-                (playlistItems.get(i).type.equals(getItemResult.type))) {
-                playlistGridView.setItemChecked(i, true);
-                playlistGridView.setSelection(i);
+            if (getItemResult != null) {
+                if ((playlistItems.get(i).id == getItemResult.id) &&
+                        (playlistItems.get(i).type.equals(getItemResult.type))) {
+                    playlistGridView.setItemChecked(i, true);
+                    playlistGridView.setSelection(i);
+                }
             }
         }
     }
@@ -493,7 +703,7 @@ public class PlaylistFragment extends Fragment
             @Override
             public void onClick(View v) {
                 final int position = (Integer)v.getTag();
-
+                Log.d(TAG, "PlayListAdapter: onClick(), position = " + position);
                 final PopupMenu popupMenu = new PopupMenu(getActivity(), v);
                 popupMenu.getMenuInflater().inflate(R.menu.playlist_item, popupMenu.getMenu());
                 popupMenu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
@@ -551,6 +761,14 @@ public class PlaylistFragment extends Fragment
         public void setPlaylistItems(List<ListType.ItemsAll> playlistItems) {
             this.playlistItems = playlistItems;
             notifyDataSetChanged();
+        }
+
+        /**
+         * get the playlist
+         * @return playlistItems
+         */
+        public List<ListType.ItemsAll> getPlaylistItems() {
+            return this.playlistItems;
         }
 
         @Override

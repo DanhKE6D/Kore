@@ -377,6 +377,7 @@ public class RemoteActivity extends BaseActivity
 //        final String kodiAddonUrl = "plugin://plugin.video.youtube/?path=/root/search&action=play_video&videoid="
 //                + videoId;
         final String kodiAddonUrl = "plugin://plugin.video.youtube/play/?video_id=" + videoId;
+        LogUtils.LOGD(TAG, "kodiAddonUrl = " + kodiAddonUrl);
 
         // Check if any video player is active and clear the playlist before queuing if so
         final HostConnection connection = hostManager.getConnection();
@@ -420,7 +421,7 @@ public class RemoteActivity extends BaseActivity
      */
     private void clearPlaylistAndQueueFile(final String file,
                                            final HostConnection connection, final Handler callbackHandler) {
-        LogUtils.LOGD(TAG, "Clearing video playlist");
+        LogUtils.LOGD(TAG, "clearPlaylistAndQueueFile(): Clearing video playlist");
         Playlist.Clear action = new Playlist.Clear(PlaylistType.VIDEO_PLAYLISTID);
         action.execute(connection, new ApiCallback<String>() {
             @Override
@@ -447,7 +448,7 @@ public class RemoteActivity extends BaseActivity
      */
     private void queueFile(final String file, final boolean startPlaylist,
                            final HostConnection connection, final Handler callbackHandler) {
-        LogUtils.LOGD(TAG, "Queing file");
+        LogUtils.LOGD(TAG, "queueFile(): Queing file, startPlaylist = " + startPlaylist);
         PlaylistType.Item item = new PlaylistType.Item();
         item.file = file;
         Playlist.Add action = new Playlist.Add(PlaylistType.VIDEO_PLAYLISTID, item);

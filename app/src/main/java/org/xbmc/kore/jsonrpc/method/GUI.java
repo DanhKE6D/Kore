@@ -18,6 +18,7 @@ package org.xbmc.kore.jsonrpc.method;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.xbmc.kore.jsonrpc.ApiException;
 import org.xbmc.kore.jsonrpc.ApiMethod;
+import org.xbmc.kore.jsonrpc.type.GUIType;
 import org.xbmc.kore.utils.JsonUtils;
 
 /**
@@ -202,6 +203,38 @@ public class GUI {
         @Override
         public Boolean resultFromJson(ObjectNode jsonObject) throws ApiException {
             return JsonUtils.booleanFromJsonNode(jsonObject, RESULT_NODE);
+        }
+    }
+
+    /**
+     * Retrieves the values of the given properties.
+     */
+    public static class GetProperties extends ApiMethod<GUIType.PropertyValue> {
+        public final static String METHOD_NAME = "GUI.GetProperties";
+
+        /**
+         * Properties
+         */
+        public static final String CURRENTWINDOW = "currentwindow";
+        public static final String CURRENTCONTROL = "currentcontrol";
+        public static final String SKIN = "skin";
+        public static final String FULLSCREEN = "fullscreen";
+
+        /**
+         * Retrieves the values of the given properties.
+         * @param properties  See this class constants.
+         */
+        public GetProperties(String... properties) {
+            super();
+            addParameterToRequest("properties", properties);
+        }
+
+        @Override
+        public String getMethodName() { return METHOD_NAME; }
+
+        @Override
+        public GUIType.PropertyValue resultFromJson(ObjectNode jsonObject) throws ApiException {
+            return new GUIType.PropertyValue(jsonObject.get(RESULT_NODE));
         }
     }
 
