@@ -9,7 +9,7 @@ android {
         minSdkVersion 15
         targetSdkVersion 22
         versionCode 12
-        versionName "1.5.0"
+        versionName "1.5.2"
     }
 
     File keystoreFile = file('keystore.properties')
@@ -73,7 +73,6 @@ dependencies {
     compile 'com.android.support:support-v4:22.2.0'
     compile 'com.android.support:appcompat-v7:22.2.0'
     compile 'com.android.support:cardview-v7:22.2.0'
-
     compile 'com.fasterxml.jackson.core:jackson-databind:2.5.2'
     compile 'com.jakewharton:butterknife:6.1.0'
     compile 'com.squareup.okhttp:okhttp:2.3.0'
@@ -82,6 +81,7 @@ dependencies {
     compile 'javax.jmdns:jmdns:3.4.1'
     compile 'com.astuetz:pagerslidingtabstrip:1.0.1'
     compile 'com.melnykov:floatingactionbutton:1.3.0'
-
+    compile 'com.google.code.gson:gson:2.3.1'
     compile fileTree(dir: 'libs', include: ['*.jar'])
+    compile project(':aFileDialog')
 }

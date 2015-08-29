@@ -183,6 +183,7 @@
     <string name="now_playing">Now playing</string>
     <string name="remote">Remote</string>
     <string name="playlist">Playlist</string>
+    <string name="youtube">YouTube</string>
 
     <string name="season_episode_abbrev">s%1$02de%2$02d</string>
     <string name="season_episode">Season %1$02d | Episode %2$02d</string>
@@ -224,7 +225,11 @@
     <string name="error_message">Error message: %1$s</string>
     <string name="playlist_empty">Playlist empty</string>
     <string name="clear_playlist">Clear playlist</string>
+    <string name="load_music_playlist">Music playlist</string>
+    <string name="load_video_playlist">Video playlist</string>
     <string name="source_empty">Media source empty</string>
+    <string name="save_current_playlist">Save current playlist</string>
+    <string name="load_pl_from_file">"Load playlist from file</string>
 
     <string name="no_movies_found_refresh">No movies found\n\nSwipe down to refresh</string>
     <string name="no_tvshows_found_refresh">No TV Shows found\n\nSwipe down to refresh</string>

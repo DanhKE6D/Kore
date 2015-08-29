@@ -1,1 +1,2 @@
-include ':app'
+include ':app', ':aFileDialog'
+project(':aFileDialog').projectDir = new File('library/aFileDialog')
