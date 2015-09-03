@@ -21,48 +21,9 @@ import java.io.OutputStreamWriter;
  */
 public class FileUtils {
     static final String TAG = FileUtils.class.getSimpleName();
-    static final String appDirInSDCard = "Kore";
-    static final String playlistDir = "Playlists";
-    static final String playlistDirNet = "Net";
-    static final String playlistDirLocal = "Local";
 
-    static boolean createDirIfNotExists(String dir) {
-        boolean ret = true;
-
-        File file = new File(Environment.getExternalStorageDirectory().getPath() + "/" + dir);
-        if (!file.exists()) {
-            if (!file.mkdirs()) {
-                ret = false;
-            }
-        }
-        return ret;
-    }
-
-    static void CreateDefaultDirsOnSDCard() {
-        createDirIfNotExists(appDirInSDCard);
-        createDirIfNotExists(appDirInSDCard +"/"+ playlistDir);
-        createDirIfNotExists(appDirInSDCard + "/" + playlistDir + "/" + playlistDirNet);
-        createDirIfNotExists(appDirInSDCard + "/" + playlistDir + "/" + playlistDirLocal);
-    }
-
-    public static boolean playlistDirExisted() {
-        File file = new File(Environment.getExternalStorageDirectory().getPath() + "/" + appDirInSDCard);
-        if (!file.exists()) {
-            CreateDefaultDirsOnSDCard();
-        }
-        return true;
-    }
-
-    public static String getPlaylistDirectory() {
-        return Environment.getExternalStorageDirectory().getPath() +
-                "/" + appDirInSDCard + "/" + playlistDir + "/";
-    }
 
     public static boolean savePlaylistToFile(final File playlistFile, final String jsonPlaylistContent) {
-        if (!playlistDirExisted()) {
-            // if top directory exists, the lower directory existed too
-            CreateDefaultDirsOnSDCard();
-        }
         Thread t = new Thread() {
             public void run() {
                 try {
@@ -91,11 +52,6 @@ public class FileUtils {
     public static String readFromFile(final File playlistFile) {
         final String [] ret = new String[1];
         ret[0] = "";    // work around for the inner class value problem
-        if (!playlistDirExisted()) {
-            // if top directory exists, the lower directory existed too
-            CreateDefaultDirsOnSDCard();
-            return ret[0];
-        }
         Thread t = new Thread() {
             public void run() {
                 try {

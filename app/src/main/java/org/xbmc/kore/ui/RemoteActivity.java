@@ -125,14 +125,15 @@ public class RemoteActivity extends BaseActivity
         TabsAdapter tabsAdapter = new TabsAdapter(this, getSupportFragmentManager())
                 .addTab(NowPlayingFragment.class, null, R.string.now_playing, 1)
                 .addTab(RemoteFragment.class, null, R.string.remote, 2)
-                .addTab(PlaylistFragment.class, null, R.string.playlist, 3);
+                .addTab(PlaylistFragment.class, null, R.string.playlist, 3)
+                .addTab(YouTubeSearchFragment.class, null, R.string.youtube, 4);
 
         viewPager.setAdapter(tabsAdapter);
         pageIndicator.setViewPager(viewPager);
         pageIndicator.setOnPageChangeListener(defaultOnPageChangeListener);
 
         viewPager.setCurrentItem(1);
-        viewPager.setOffscreenPageLimit(2);
+        viewPager.setOffscreenPageLimit(3);
 
         setupActionBar();
 
@@ -346,7 +347,9 @@ public class RemoteActivity extends BaseActivity
                 case 2:
                     toolbar.setTitle(R.string.playlist);
                     break;
-            }
+                case 3:
+                    toolbar.setTitle(R.string.youtube);
+                    break;            }
         }
     }
 

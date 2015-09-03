@@ -280,6 +280,7 @@ public class TVShowOverviewFragment extends AbstractDetailsFragment
 
         int posterWidth = resources.getDimensionPixelOffset(R.dimen.now_playing_poster_width);
         int posterHeight = resources.getDimensionPixelOffset(R.dimen.now_playing_poster_height);
+
         UIUtils.loadImageWithCharacterAvatar(getActivity(), getHostManager(),
                 cursor.getString(TVShowDetailsQuery.THUMBNAIL), tvshowTitle,
                 mediaPoster, posterWidth, posterHeight);

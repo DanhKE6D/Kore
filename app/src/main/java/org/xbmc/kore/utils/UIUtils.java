@@ -18,7 +18,9 @@ package org.xbmc.kore.utils;
 import android.animation.Animator;
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
@@ -29,6 +31,7 @@ import android.support.annotation.NonNull;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewAnimationUtils;
@@ -53,9 +56,9 @@ import java.util.List;
  * General UI Utils
  */
 public class UIUtils {
+    static final String TAG = UIUtils.class.getSimpleName();
 
     public static final float IMAGE_RESIZE_FACTOR = 1.0f;
-
     public static final int initialButtonRepeatInterval = 400; // ms
     public static final int buttonRepeatInterval = 80; // ms
     public static final int buttonVibrationDuration = 50; //ms
@@ -162,17 +165,17 @@ public class UIUtils {
 
         if ((imageWidth) > 0 && (imageHeight > 0)) {
             hostManager.getPicasso()
-                       .load(hostManager.getHostInfo().getImageUrl(imageUrl))
-                       .placeholder(avatarDrawable)
-                       .resize(imageWidth, imageHeight)
-                       .centerCrop()
-                       .into(imageView);
+                    .load(hostManager.getHostInfo().getImageUrl(imageUrl))
+                    .placeholder(avatarDrawable)
+                    .resize(imageWidth, imageHeight)
+                    .centerCrop()
+                    .into(imageView);
         } else {
             hostManager.getPicasso()
-                       .load(hostManager.getHostInfo().getImageUrl(imageUrl))
-                       .fit()
-                       .centerCrop()
-                       .into(imageView);
+                    .load(hostManager.getHostInfo().getImageUrl(imageUrl))
+                    .fit()
+                    .centerCrop()
+                    .into(imageView);
         }
     }
 
@@ -449,6 +452,7 @@ public class UIUtils {
         }
     }
 
+
     /**
      * Use this to manually start the swiperefreshlayout refresh animation.
      * Fixes issue with refresh animation not showing when using appcompat library (from version 20?)
@@ -471,5 +475,25 @@ public class UIUtils {
         Rect containerBounds = new Rect();
         container.getHitRect(containerBounds);
         return view.getLocalVisibleRect(containerBounds);
+    }
+
+    public static void errorMesgBox(Context ctx, String title, String msg) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(ctx);
+        builder.setTitle(title);
+        builder.setMessage(msg);
+        // Setting Icon to Dialog
+        builder.setIcon(R.drawable.ic_stop);
+        builder.setPositiveButton("OK",
+                new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+
+                    }
+                });
+
+        // create alert dialog
+        final AlertDialog alertDialog = builder.create();
+        // show it
+        alertDialog.show();
+
     }
 }

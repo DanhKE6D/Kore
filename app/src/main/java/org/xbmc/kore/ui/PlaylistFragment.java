@@ -23,7 +23,6 @@ import android.os.Handler;
 import android.support.v4.app.Fragment;
 import android.support.v7.widget.CardView;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -54,6 +53,7 @@ import org.xbmc.kore.jsonrpc.type.ListType;
 import org.xbmc.kore.jsonrpc.type.PlayerType;
 import org.xbmc.kore.jsonrpc.type.PlaylistType;
 import org.xbmc.kore.model.MediaPlayList;
+import org.xbmc.kore.utils.Config;
 import org.xbmc.kore.utils.FileUtils;
 import org.xbmc.kore.utils.LogUtils;
 import org.xbmc.kore.utils.UIUtils;
@@ -103,14 +103,14 @@ public class PlaylistFragment extends Fragment
      */
     private PlayListAdapter playListAdapter;
 
-    public enum PlaylistItemMode { None, ClearPlaylist, InsertToPlaylist }
+    enum PlaylistItemMode { None, ClearPlaylist, InsertToPlaylist }
 
 
     PlaylistItemMode playlistItemMode = PlaylistItemMode.None;
     MediaPlayList playlistToInsert = null;
     int curPlaylistItem = 0;
 
-    public enum FileSelectionMode { None, FileLoad, FileSave}
+    enum FileSelectionMode { None, FileLoad, FileSave}
     FileSelectionMode fileSelectionMode = FileSelectionMode.None;
 
     /**
@@ -134,7 +134,7 @@ public class PlaylistFragment extends Fragment
         super.onCreate(savedInstanceState);
         hostManager = HostManager.getInstance(getActivity());
         hostConnectionObserver = hostManager.getHostConnectionObserver();
-        FileUtils.playlistDirExisted();         // create default playlist directory if it does not already there
+
     }
 
     @Override
@@ -209,7 +209,7 @@ public class PlaylistFragment extends Fragment
                     // Assign listener for the select event.
                     dialog.addListener(PlaylistFragment.this.onFileSelectedListener);
                     // Define start folder.
-                    dialog.loadFolder(FileUtils.getPlaylistDirectory());
+                    dialog.loadFolder(Config.getPlaylistDirectory());
                     // Activate the button for create files.
                     dialog.setCanCreateFiles(true);
                     dialog.setShowConfirmation(true, true);
@@ -223,7 +223,7 @@ public class PlaylistFragment extends Fragment
                 // Assign listener for the select event.
                 dialog.addListener(PlaylistFragment.this.onFileSelectedListener);
                 // Define start folder.
-                dialog.loadFolder(FileUtils.getPlaylistDirectory());
+                dialog.loadFolder(Config.getPlaylistDirectory());
                 dialog.setShowConfirmation(true, false);
                 dialog.show();
                 // load will be performed in dialog callback
@@ -243,7 +243,7 @@ public class PlaylistFragment extends Fragment
             final String playlistFileName = file.getName();
             if (fileSelectionMode == FileSelectionMode.FileLoad) {
                 String playlistJSON = FileUtils.readFromFile(file);
-                playlistToInsert = Utils.getGson().fromJson(playlistJSON, MediaPlayList.class);
+                playlistToInsert = Config.getGson().fromJson(playlistJSON, MediaPlayList.class);
                 // If the selected playlist is not empty, clear the playlist, then push all the playlist item to the
                 // new playlist
                 if (playlistToInsert.playlist.size() > 0) {
@@ -260,7 +260,7 @@ public class PlaylistFragment extends Fragment
             else if (fileSelectionMode == FileSelectionMode.FileSave) {
                 // save playlist
                 MediaPlayList mediaPlaylist = new MediaPlayList(currentPlaylistId, playListAdapter.getPlaylistItems());
-                final String playlistGson =  Utils.getGson().toJson(mediaPlaylist);
+                final String playlistGson =  Config.getGson().toJson(mediaPlaylist);
                 FileUtils.savePlaylistToFile(file, playlistGson);
             }
 
@@ -268,14 +268,14 @@ public class PlaylistFragment extends Fragment
         }
         public void onFileSelected(Dialog source, File folder, String name) {
             source.hide();
-            File newFile = new File(FileUtils.getPlaylistDirectory() + "/" + folder.getName() + "/" + name);
+            File newFile = new File(Config.getPlaylistDirectory() + "/" + folder.getName() + "/" + name);
             //Toast toast = Toast.makeText(getActivity(), "File created: " + folder.getName() + "/" + name, Toast.LENGTH_LONG);
             //toast.show();
             // can not be read from file -- we are creating new one
             if (fileSelectionMode == FileSelectionMode.FileSave) {
                 // save it
                 MediaPlayList mediaPlaylist = new MediaPlayList(currentPlaylistId, playListAdapter.getPlaylistItems());
-                final String playlistGson =  Utils.getGson().toJson(mediaPlaylist);
+                final String playlistGson =  Config.getGson().toJson(mediaPlaylist);
                 FileUtils.savePlaylistToFile(newFile, playlistGson);
             }
         }

@@ -15,25 +15,13 @@
    limitations under the License.
 -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
-    <item android:id="@+id/action_clear_playlist"
-        android:title="@string/clear_playlist"
+      xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/action_play_item"
+        android:title="@string/yt_play_item"
         android:orderInCategory="1"
         app:showAsAction="never" />
-    <item android:id="@+id/action_load_music_pl"
-        android:title="@string/load_music_playlist"
-        android:orderInCategory="1"
-        app:showAsAction="never" />
-    <item android:id="@+id/action_load_video_pl"
-        android:title="@string/load_video_playlist"
-        android:orderInCategory="1"
-        app:showAsAction="never" />
-    <item android:id="@+id/action_save_current_pl"
-        android:title="@string/save_current_playlist"
-        android:orderInCategory="1"
-        app:showAsAction="never" />
-    <item android:id="@+id/action_load_pl_from_file"
-        android:title="@string/load_pl_from_file"
-        android:orderInCategory="1"
+    <item android:id="@+id/action_queue_from_here"
+        android:title="@string/yt_queue_all_items"
+        android:orderInCategory="2"
         app:showAsAction="never" />
 </menu>

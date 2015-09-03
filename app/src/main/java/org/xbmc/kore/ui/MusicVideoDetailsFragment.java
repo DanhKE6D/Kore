@@ -441,7 +441,6 @@ public class MusicVideoDetailsFragment extends AbstractDetailsFragment
         UIUtils.loadImageIntoImageview(getHostManager(),
                 TextUtils.isEmpty(fanart)? poster : fanart,
                 mediaArt, artWidth, artHeight);
-
         // Setup download info
         musicVideoDownloadInfo = new FileDownloadHelper.MusicVideoInfo(
                 musicVideoTitle, cursor.getString(MusicVideoDetailsQuery.FILE));
