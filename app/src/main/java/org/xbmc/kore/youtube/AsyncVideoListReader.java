@@ -39,8 +39,13 @@ public class AsyncVideoListReader extends AsyncTaskLoader<YouTubeVideoDataHandle
 
         String searchResultJSON = FileUtils.readFromFile(new File(videoListFilename));
         mDataHandler = new YouTubeVideoDataHandler();
-        YouTubeVideo[] ytArray = Config.getGson().fromJson(searchResultJSON, YouTubeVideo[].class);
-        mDataHandler.setData(new ArrayList<>(Arrays.asList(ytArray)));
+        if (searchResultJSON.length() > 0) {
+            YouTubeVideo[] ytArray = Config.getGson().fromJson(searchResultJSON, YouTubeVideo[].class);
+            mDataHandler.setData(new ArrayList<>(Arrays.asList(ytArray)));
+        }
+        else {
+            mDataHandler.setData(new ArrayList<YouTubeVideo>());
+        }
         Log.d(TAG, "Read search results from file completed, Number of videos = " + mDataHandler.getData().size());
         return mDataHandler;
 

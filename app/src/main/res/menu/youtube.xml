@@ -16,8 +16,9 @@
 -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <item android:id="@+id/action_search_youtube"
+    <item android:id="@+id/action_search"
         android:title="@string/new_search"
         android:orderInCategory="1"
-        app:showAsAction="never" />
+        android:actionViewClass="android.support.v7.widget.SearchView"
+        app:showAsAction="never"/>
 </menu>

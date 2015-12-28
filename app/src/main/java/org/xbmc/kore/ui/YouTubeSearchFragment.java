@@ -5,36 +5,39 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.LoaderManager;
 import android.support.v4.content.Loader;
+import android.support.v4.view.MenuItemCompat;
 import android.support.v7.widget.CardView;
-import android.text.TextUtils;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.RelativeLayout;
+import android.widget.SearchView;
 import android.widget.TextView;
 
 import org.xbmc.kore.R;
 import org.xbmc.kore.host.HostConnectionObserver;
-import org.xbmc.kore.host.HostInfo;
 import org.xbmc.kore.host.HostManager;
 import org.xbmc.kore.jsonrpc.ApiCallback;
 import org.xbmc.kore.jsonrpc.ApiMethod;
@@ -45,10 +48,12 @@ import org.xbmc.kore.jsonrpc.type.GUIType;
 import org.xbmc.kore.jsonrpc.type.ListType;
 import org.xbmc.kore.jsonrpc.type.PlayerType;
 import org.xbmc.kore.jsonrpc.type.PlaylistType;
+import org.xbmc.kore.ui.menuitemsearch.MenuItemSearchAction;
+import org.xbmc.kore.ui.menuitemsearch.SearchPerformListener;
 import org.xbmc.kore.utils.Config;
 import org.xbmc.kore.utils.LogUtils;
+import org.xbmc.kore.utils.SharedPreferencesUtils;
 import org.xbmc.kore.utils.UIUtils;
-import org.xbmc.kore.utils.Utils;
 import org.xbmc.kore.youtube.AsyncVideoListReader;
 import org.xbmc.kore.youtube.PerformYouTubeSearchTask;
 import org.xbmc.kore.youtube.model.YouTubeVideo;
@@ -59,8 +64,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
-
-import ar.com.daidalos.afiledialog.FileChooserDialog;
 import butterknife.ButterKnife;
 import butterknife.InjectView;
 
@@ -70,7 +73,7 @@ import butterknife.InjectView;
 public class YouTubeSearchFragment extends Fragment implements
         LoaderManager.LoaderCallbacks<YouTubeVideoDataHandler>,
         PerformYouTubeSearchTask.OnUpdateSearchResultList,
-        HostConnectionObserver.PlayerEventsObserver  {
+        HostConnectionObserver.PlayerEventsObserver {
     private static final String TAG = YouTubeSearchFragment.class.getSimpleName();
     static final int LOAD_YT_VIDEOLIST = 1001;
 
@@ -182,6 +185,9 @@ public class YouTubeSearchFragment extends Fragment implements
         super.onActivityCreated(savedInstanceState);
         // We have options
         setHasOptionsMenu(true);
+        lastSearchText = SharedPreferencesUtils.getString(getActivity(), Config.LAST_SEARCH_TEXT, "");
+        prevSearchPageToken = SharedPreferencesUtils.getString(getActivity(), Config.PREV_SEARCH_TOKEN, "");
+        nextSearchPageToken = SharedPreferencesUtils.getString(getActivity(), Config.NEXT_SEARCH_TOKEN, "");
     }
 
     @Override
@@ -199,17 +205,125 @@ public class YouTubeSearchFragment extends Fragment implements
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.youtube, menu);
+        /*
+        TODO: fix it!
+        //MenuItemSearchAction menuItemSearchAction = new MenuItemSearchAction(getActivity(), menu, this);
+        MenuItem item = menu.findItem(R.id.action_search);
+
+        android.support.v7.widget.SearchView sv = new android.support.v7.widget.SearchView((getActivity()).getActionBar().getThemedContext());
+        MenuItemCompat.setShowAsAction(item, MenuItemCompat.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW | MenuItemCompat.SHOW_AS_ACTION_IF_ROOM);
+        MenuItemCompat.setActionView(item, sv);
+        sv.setOnQueryTextListener(new android.support.v7.widget.SearchView.OnQueryTextListener() {
+            @Override
+            public boolean onQueryTextSubmit(String query) {
+                Log.i(TAG, "search query submit");
+                return onQueryTextSubmit(query);
+            }
+
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                Log.i(TAG, "tap");
+                return false;
+            }
+        });
+        */
         super.onCreateOptionsMenu(menu, inflater);
+    }
+
+    // The following callbacks are called for the SearchView.OnQueryChangeListener
+    public boolean onQueryTextChange(String newText) {
+        //newText = newText.isEmpty() ? "" : "Query so far: " + newText;
+        //mSearchText.setText(newText);
+        //mSearchText.setTextColor(Color.GREEN);
+        Log.i(TAG, "onQueryTextChange: Query so far: " + newText);
+        return true;
+    }
+
+    boolean onQueryTextSubmit(String query) {
+        //Toast.makeText(this, "Searching for: " + query + "...", Toast.LENGTH_SHORT).show();
+        //mSearchText.setText("Searching for: " + query + "...");
+        //mSearchText.setTextColor(Color.RED);
+        Log.i(TAG, "onQueryTextSubmit: query:" + query);
+        if (query.length() > 0) {
+            // create an async task to search
+            nextSearchPageToken = null;
+            prevSearchPageToken = null;
+            lastSearchText = query;
+            performYouTubeSearch(lastSearchText, nextSearchPageToken);
+        }
+        return true;
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
+        final MenuItem i = item;
         switch (item.getItemId()) {
-            case R.id.action_search_youtube: {
-                nextSearchPageToken = null;
-                prevSearchPageToken = null;
-                lastSearchText = "Quang Le";
-                performYouTubeSearch(lastSearchText, nextSearchPageToken);
+            case R.id.action_search: {
+
+                /*
+                item.setActionView(R.layout.search_param);
+                List<String> list = Config.getInstance().getYTSearchTextHistory();
+                String history[] = new String[list.size()];
+                history = list.toArray(history);
+                final AutoCompleteTextView txtSearch = (AutoCompleteTextView) item.getActionView().findViewById(R.id.search_edit_text);
+                final PopUpListAdapter adapter = new PopUpListAdapter(getActivity(), android.R.layout.simple_list_item_1, history);
+                txtSearch.setAdapter(adapter);
+
+                txtSearch.addTextChangedListener(new TextWatcher() {
+
+                    @Override
+                    public void onTextChanged(CharSequence cs, int arg1, int arg2, int arg3) {
+                        // When user changed the Text
+                        adapter.getFilter().filter(cs);
+                    }
+
+                    @Override
+                    public void beforeTextChanged(CharSequence arg0, int arg1, int arg2,
+                                                  int arg3) {
+                        // TODO Auto-generated method stub
+
+                    }
+
+                    @Override
+                    public void afterTextChanged(Editable arg0) {
+                        // TODO Auto-generated method stub
+                    }
+                });
+                //txtSearch.setText(lastSearchText);
+                txtSearch.setTextColor(Color.BLACK);
+                txtSearch.requestFocus();
+                // Setting an action listener
+                txtSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+                    @Override
+                    public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                        Log.i(TAG, "onEditorAction:");
+                        if ((actionId == EditorInfo.IME_ACTION_SEARCH) || (event.getAction() == KeyEvent.ACTION_DOWN &&
+                                event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                            ((InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(
+                                    txtSearch.getWindowToken(), 0);
+                            i.collapseActionView();
+                            lastSearchText = v.getText().toString();
+                            if (lastSearchText.length() > 0) {
+                                // create an async task to search
+                                nextSearchPageToken = null;
+                                prevSearchPageToken = null;
+                                performYouTubeSearch(lastSearchText, nextSearchPageToken);
+                            }
+                            //listAdapter.notifyDataSetChanged();
+                            return true;
+                        } else {
+                            return false;
+                        }
+                    }
+
+                });
+                InputMethodManager imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
+                imm.toggleSoftInput(InputMethodManager.SHOW_FORCED,0);
+                //nextSearchPageToken = null;
+                //prevSearchPageToken = null;
+                //lastSearchText = "Quang Le";
+                //performYouTubeSearch(lastSearchText, nextSearchPageToken);
+                */
             }
             break;
 
@@ -219,13 +333,25 @@ public class YouTubeSearchFragment extends Fragment implements
 
         return super.onOptionsItemSelected(item);
     }
-
+/*
+    @Override
+    public void performSearch(String query) {
+        Log.i(TAG, "performSearch: query string = " + query);
+        if (query.length() > 0) {
+            // create an async task to search
+            nextSearchPageToken = null;
+            prevSearchPageToken = null;
+            lastSearchText = query;
+            performYouTubeSearch(lastSearchText, nextSearchPageToken);
+        }
+    }
+*/
     @Override
     public void updateSearchResultList(String searchText, String prevPgToken, String nextPgToken) {
         prevSearchPageToken = prevPgToken;
         nextSearchPageToken = nextPgToken;
         lastSearchText = searchText;
-        Config.getInstance().setYTSearchTextParams(prevSearchPageToken, nextSearchPageToken, lastSearchText);
+        Config.getInstance().setYTSearchTextParams(getActivity(), prevSearchPageToken, nextSearchPageToken, lastSearchText);
         if (asyncVideoListReader == null) {
             Log.i(TAG, "Starting new load");
 
@@ -398,31 +524,10 @@ public class YouTubeSearchFragment extends Fragment implements
     }
 
     public void playerOnConnectionError(int errorCode, String description) {
-        HostInfo hostInfo = hostManager.getHostInfo();
-
-        switchToPanel(R.id.info_panel);
-        if (hostInfo != null) {
-            infoTitle.setText(R.string.connecting);
-            // TODO: check error code
-            infoMessage.setText(String.format(getString(R.string.connecting_to), hostInfo.getName(), hostInfo.getAddress()));
-        } else {
-            infoTitle.setText(R.string.no_xbmc_configured);
-            infoMessage.setText(null);
-        }
-
         lastCallResult = HostConnectionObserver.PlayerEventsObserver.PLAYER_CONNECTION_ERROR;
     }
 
     public void playerNoResultsYet() {
-        // Initialize info panel
-        switchToPanel(R.id.info_panel);
-        HostInfo hostInfo = hostManager.getHostInfo();
-        if (hostInfo != null) {
-            infoTitle.setText(R.string.connecting);
-        } else {
-            infoTitle.setText(R.string.no_xbmc_configured);
-        }
-        infoMessage.setText(null);
         lastCallResult = HostConnectionObserver.PlayerEventsObserver.PLAYER_NO_RESULT;
     }
 

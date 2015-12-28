@@ -1,5 +1,6 @@
 package org.xbmc.kore.utils;
 
+import android.content.Context;
 import android.os.Environment;
 
 import com.google.gson.Gson;
@@ -20,6 +21,9 @@ public class Config {
     static final String playlistDirNet = "Net";
     static final String playlistDirLocal = "Local";
     public static final String ytSearchResultFile = "SearchResult.json";
+    public static final String LAST_SEARCH_TEXT = "lastSearchText";
+    public static final String PREV_SEARCH_TOKEN = "prevSearchPageToken";
+    public static final String NEXT_SEARCH_TOKEN = "nextSearchPageToken";
 
     static Gson sGsonInstance = new Gson();
     private String prevPageToken, nextPageToken, searchText;
@@ -43,10 +47,13 @@ public class Config {
         return Loader.INSTANCE;
     }
 
-    public void setYTSearchTextParams(String pToken, String nToken, String text) {
+    public void setYTSearchTextParams(Context context, String pToken, String nToken, String text) {
         prevPageToken = pToken;
         nextPageToken = nToken;
         searchText = text;
+        SharedPreferencesUtils.putString(context, LAST_SEARCH_TEXT, searchText);
+        SharedPreferencesUtils.putString(context, PREV_SEARCH_TOKEN, prevPageToken);
+        SharedPreferencesUtils.putString(context, NEXT_SEARCH_TOKEN, nextPageToken);
         setSearchTextHistory(searchText);
     }
 
