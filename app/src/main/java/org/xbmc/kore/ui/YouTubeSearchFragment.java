@@ -13,6 +13,7 @@ import android.support.v4.content.Loader;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.widget.CardView;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -50,6 +51,7 @@ import org.xbmc.kore.jsonrpc.type.PlayerType;
 import org.xbmc.kore.jsonrpc.type.PlaylistType;
 import org.xbmc.kore.ui.menuitemsearch.MenuItemSearchAction;
 import org.xbmc.kore.ui.menuitemsearch.SearchPerformListener;
+import org.xbmc.kore.utils.CharacterDrawable;
 import org.xbmc.kore.utils.Config;
 import org.xbmc.kore.utils.LogUtils;
 import org.xbmc.kore.utils.SharedPreferencesUtils;
@@ -714,7 +716,7 @@ public class YouTubeSearchFragment extends Fragment implements
                 artWidth = artHeight;
             }
 
-            UIUtils.loadImageWithCharacterAvatar(getActivity(), hostManager,
+            loadThumbnailImage(getActivity(), hostManager,
                     artUrl, title,
                     viewHolder.art, artWidth, artHeight);
 
@@ -724,6 +726,29 @@ public class YouTubeSearchFragment extends Fragment implements
             viewHolder.contextMenu.setOnClickListener(searchItemMenuClickListener);
 
             return convertView;
+        }
+
+        // this is basically UIUtils.loadImageWithCharacterAvatar that load the thumbnail url to the listview if
+        // it is not empty. Implement it here because changing the function signature to include an extra parameter
+        // to bypass hostManager is too much trouble later on when the original source code in github changed so
+        // much that we have to rebase our branch (playlist_enhancement)
+        // DanhDroid -- 20151228
+        void loadThumbnailImage(Context context, HostManager hostManager,
+                                String imageUrl, String stringAvatar,
+                                ImageView imageView,
+                                int imageWidth, int imageHeight) {
+            CharacterDrawable avatarDrawable = UIUtils.getCharacterAvatar(context, stringAvatar);
+            if (TextUtils.isEmpty(imageUrl)) {
+                imageView.setImageDrawable(avatarDrawable);
+                return;
+            }
+            hostManager.getPicasso()
+                    .load(imageUrl)
+                    .placeholder(avatarDrawable)
+                    .resize(imageWidth, imageHeight)
+                    .centerCrop()
+                    .into(imageView);
+
         }
 
         private class ViewHolder {
