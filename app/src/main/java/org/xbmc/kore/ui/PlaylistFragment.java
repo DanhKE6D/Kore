@@ -103,13 +103,11 @@ public class PlaylistFragment extends Fragment
      */
     private PlayListAdapter playListAdapter;
 
+
     enum PlaylistItemMode { None, ClearPlaylist, InsertToPlaylist }
-
-
     PlaylistItemMode playlistItemMode = PlaylistItemMode.None;
     MediaPlayList playlistToInsert = null;
     int curPlaylistItem = 0;
-
     enum FileSelectionMode { None, FileLoad, FileSave}
     FileSelectionMode fileSelectionMode = FileSelectionMode.None;
 
@@ -134,7 +132,6 @@ public class PlaylistFragment extends Fragment
         super.onCreate(savedInstanceState);
         hostManager = HostManager.getInstance(getActivity());
         hostConnectionObserver = hostManager.getHostConnectionObserver();
-
     }
 
     @Override

@@ -239,6 +239,7 @@
     <string name="error_reading_search_result">Error fetching search results</string>
     <string name="search_result_empty">Search results empty</string>
 
+
     <string name="no_movies_found_refresh">No movies found\n\nSwipe down to refresh</string>
     <string name="no_tvshows_found_refresh">No TV Shows found\n\nSwipe down to refresh</string>
     <string name="no_episodes_found">No episodes found</string>

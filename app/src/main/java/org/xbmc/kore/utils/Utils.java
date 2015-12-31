@@ -25,15 +25,15 @@ import android.net.Uri;
 import android.os.Build;
 import android.text.TextUtils;
 
+import com.google.gson.Gson;
+
 import java.util.List;
 
 /**
  * Because every project needs one of these
  * */
 public class Utils {
-
-
-    /**
+    /*
      * Returns whether the SDK is the Jellybean release or later.
      */
     public static boolean isJellybeanOrLater() {

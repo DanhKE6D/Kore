@@ -1,11 +1,6 @@
 package org.xbmc.kore.utils;
 
-import android.content.Context;
-import android.os.Environment;
 import android.util.Log;
-
-import org.xbmc.kore.jsonrpc.type.PlaylistType;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -21,8 +16,6 @@ import java.io.OutputStreamWriter;
  */
 public class FileUtils {
     static final String TAG = FileUtils.class.getSimpleName();
-
-
     public static boolean savePlaylistToFile(final File playlistFile, final String jsonPlaylistContent) {
         Thread t = new Thread() {
             public void run() {
