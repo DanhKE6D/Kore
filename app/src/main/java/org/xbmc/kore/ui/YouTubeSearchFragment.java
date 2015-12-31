@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v4.app.Fragment;
@@ -12,21 +11,16 @@ import android.support.v4.app.LoaderManager;
 import android.support.v4.content.Loader;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.widget.CardView;
-import android.text.Editable;
 import android.text.TextUtils;
-import android.text.TextWatcher;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputMethodManager;
+import android.widget.AbsListView;
 import android.widget.AdapterView;
-import android.widget.AutoCompleteTextView;
 import android.widget.BaseAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
@@ -34,7 +28,7 @@ import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.RelativeLayout;
-import android.widget.SearchView;
+import android.support.v7.widget.SearchView;
 import android.widget.TextView;
 
 import org.xbmc.kore.R;
@@ -49,8 +43,6 @@ import org.xbmc.kore.jsonrpc.type.GUIType;
 import org.xbmc.kore.jsonrpc.type.ListType;
 import org.xbmc.kore.jsonrpc.type.PlayerType;
 import org.xbmc.kore.jsonrpc.type.PlaylistType;
-import org.xbmc.kore.ui.menuitemsearch.MenuItemSearchAction;
-import org.xbmc.kore.ui.menuitemsearch.SearchPerformListener;
 import org.xbmc.kore.utils.CharacterDrawable;
 import org.xbmc.kore.utils.Config;
 import org.xbmc.kore.utils.LogUtils;
@@ -75,7 +67,9 @@ import butterknife.InjectView;
 public class YouTubeSearchFragment extends Fragment implements
         LoaderManager.LoaderCallbacks<YouTubeVideoDataHandler>,
         PerformYouTubeSearchTask.OnUpdateSearchResultList,
-        HostConnectionObserver.PlayerEventsObserver {
+        HostConnectionObserver.PlayerEventsObserver,
+        AbsListView.OnScrollListener,
+        SearchView.OnQueryTextListener {
     private static final String TAG = YouTubeSearchFragment.class.getSimpleName();
     static final int LOAD_YT_VIDEOLIST = 1001;
 
@@ -84,11 +78,23 @@ public class YouTubeSearchFragment extends Fragment implements
     String lastSearchText;
     String prevSearchPageToken, nextSearchPageToken;
     AsyncVideoListReader asyncVideoListReader;
-    List<YouTubeVideo> videoList = new ArrayList<YouTubeVideo>();
+    List<YouTubeVideo> videoList = new ArrayList<>();
     Queue<YouTubeVideo> mediaQueue = new LinkedList<>();
     enum PlaylistItemMode { None, InsertToPlaylist }
     YouTubeSearchListAdapter vidSearchListAdapter;
     PlaylistItemMode playlistItemMode = PlaylistItemMode.None;
+    MenuItem searchItem = null;
+
+    public enum ScrollDirection {
+        Down, Up, None
+    }
+
+    boolean loadingNewSearchResult = false;
+    ScrollDirection mScrollDir = ScrollDirection.None;
+    boolean mScrollState = false;
+    int mLastFirstVisibleItem = 0;
+    static int scrollingUpCount = 0;
+
     /**
      * Host manager from which to get info about the current XBMC
      */
@@ -107,6 +113,8 @@ public class YouTubeSearchFragment extends Fragment implements
      * The current active player id
      */
     private int currentActivePlayerId = -1;
+    // The search filter to use in the loader
+    private String searchFilter = null;
 
     /**
      * Injectable views
@@ -129,12 +137,123 @@ public class YouTubeSearchFragment extends Fragment implements
         Log.i(TAG, "onLoadFinished: LoaderID = " + myLoaderID);
         videoList = arg1.getData();
         setSearchListAdapter();
+        //if (mScrollDir == ScrollDirection.Up) {
+            // select the last element
+            int middle = (ytSearchGridView.getAdapter().getCount() - 1) / 2;
+            ytSearchGridView.setSelection(middle);
+            YouTubeVideo vid = (YouTubeVideo) ytSearchGridView.getAdapter().getItem(middle);
+            Log.i(TAG, "scrolling UP, setting listview to middle item (" + middle + ")" + ", title = " +
+                    vid.getTitle());
+
+        //}
+        //else if (mScrollDir == ScrollDirection.Down) {
+        //    //ytSearchGridView.setSelection(0);
+        //    YouTubeVideo vid = (YouTubeVideo) ytSearchGridView.getAdapter().getItem(0);
+        //    Log.i(TAG, "scrolling DOWN, setting listview to first item (0), title = " +
+        //            vid.getTitle());
+        //}
+        resetListViewScrollingParams();
+        // see if the search item is open. If it is, collapse it
+        if (searchItem != null) {
+            searchItem.collapseActionView();
+        }
     }
 
     @Override
     public void onLoaderReset(Loader<YouTubeVideoDataHandler> arg0) {
         vidSearchListAdapter = null;
     }
+
+
+
+    void resetListViewScrollingParams() {
+        ////////////////////////////////////////////////////////////////////////
+        // reset these variables so that listview onscroll would work correctly
+        ////////////////////////////////////////////////////////////////////////
+        loadingNewSearchResult = false;
+        mLastFirstVisibleItem = 0;
+        scrollingUpCount = 0;           // reset scrolling direction
+        mScrollDir = ScrollDirection.None;
+
+    }
+
+    @Override
+    public void onScroll(AbsListView view,
+                         int firstVisible, int visibleCount, int totalCount) {
+        Log.i(TAG, "onScroll: scrollState = " + mScrollState + ", firstVisible = " + firstVisible + ", visibleCount = " + visibleCount + ", totalCount = " + totalCount);
+        if (loadingNewSearchResult) {
+            Log.i(TAG, "onScroll: Still waiting for previous load request");
+        }
+        else {
+            if (mScrollState && (mScrollDir == ScrollDirection.Down)) {
+                // scroll down
+                boolean loadMore = /* maybe add a padding */
+                        firstVisible + visibleCount >= totalCount;
+                if ((nextSearchPageToken != null) && (nextSearchPageToken.length() > 0)) {
+                    if (loadMore) {
+                        Log.i(TAG, "Scroll DOWN: Need to load NEXT search results. nextSearchPageToken = " + nextSearchPageToken);
+                        performYouTubeSearch(lastSearchText, nextSearchPageToken);
+                    }
+                }
+                else
+                    Log.i(TAG, "Scroll DOWN: nextSearchPageToken is now NULL");
+
+            }
+
+            else if (mScrollState && (mScrollDir == ScrollDirection.Up)) {
+                // scroll up
+                if (firstVisible == 0) {
+                    if ((prevSearchPageToken != null) && (prevSearchPageToken.length() > 0)) {
+                        Log.i(TAG, "Scroll UP: Need to load previous search results. prevSearchPageToken = " + prevSearchPageToken);
+                        performYouTubeSearch(lastSearchText, prevSearchPageToken);
+                    }
+                    else
+                        Log.i(TAG, "Scroll UP: prevSearchPageToken is now NULL");
+                }
+            }
+        }
+    }
+
+
+    @Override
+    public void onScrollStateChanged(AbsListView view, int scrollState) {
+        final GridView lw = (GridView) view;
+
+        if (scrollState == SCROLL_STATE_IDLE) {
+            //Log.i(TAG, "scrolling stopped...");
+            mScrollState = false;
+            scrollingUpCount = 0;
+        }
+        else {
+            mScrollState = true;
+        }
+
+        //if (view.getId() == lw.getId()) {
+        final int currentFirstVisibleItem = lw.getFirstVisiblePosition();
+        if (currentFirstVisibleItem > mLastFirstVisibleItem) {
+            mScrollDir = ScrollDirection.Down;
+            Log.i(TAG, "scrolling down...");
+        } else if (currentFirstVisibleItem < mLastFirstVisibleItem) {
+            mScrollDir = ScrollDirection.Up;
+            Log.i(TAG, "scrolling up...");
+        } else if ((currentFirstVisibleItem == 0) && (mLastFirstVisibleItem == 0)) {
+            if (mScrollState && (scrollingUpCount > 0)) {
+                Log.i(TAG, "special case scrolling up...");
+                mScrollDir = ScrollDirection.Up;
+            }
+            else
+                scrollingUpCount++;
+        }
+        Log.i(TAG, "onScrollStateChanged: scrollState = " + scrollState + ", currentFirstVisibleItem = " + currentFirstVisibleItem + ", mLastFirstVisibleItem = " + mLastFirstVisibleItem);
+        if ((currentFirstVisibleItem == 0) && mScrollState && (mScrollDir == ScrollDirection.Up) && ((prevSearchPageToken != null) &&  (prevSearchPageToken.length() > 0))) {
+            Log.i(TAG, "onScrollStateChanged: Need to load PREVIOUS search results. prevSearchPageToken = " + prevSearchPageToken);
+            performYouTubeSearch(lastSearchText, prevSearchPageToken);
+        }
+        mLastFirstVisibleItem = currentFirstVisibleItem;
+        //}
+
+    }
+
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -159,6 +278,8 @@ public class YouTubeSearchFragment extends Fragment implements
 
             }
         });
+        ytSearchGridView.setOnScrollListener(this);
+
         if ((videoList == null) || (videoList.size() == 0)) {
             displayEmptySearchResultMessage();
         }
@@ -207,28 +328,11 @@ public class YouTubeSearchFragment extends Fragment implements
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         inflater.inflate(R.menu.youtube, menu);
-        /*
-        TODO: fix it!
-        //MenuItemSearchAction menuItemSearchAction = new MenuItemSearchAction(getActivity(), menu, this);
-        MenuItem item = menu.findItem(R.id.action_search);
-
-        android.support.v7.widget.SearchView sv = new android.support.v7.widget.SearchView((getActivity()).getActionBar().getThemedContext());
-        MenuItemCompat.setShowAsAction(item, MenuItemCompat.SHOW_AS_ACTION_COLLAPSE_ACTION_VIEW | MenuItemCompat.SHOW_AS_ACTION_IF_ROOM);
-        MenuItemCompat.setActionView(item, sv);
-        sv.setOnQueryTextListener(new android.support.v7.widget.SearchView.OnQueryTextListener() {
-            @Override
-            public boolean onQueryTextSubmit(String query) {
-                Log.i(TAG, "search query submit");
-                return onQueryTextSubmit(query);
-            }
-
-            @Override
-            public boolean onQueryTextChange(String newText) {
-                Log.i(TAG, "tap");
-                return false;
-            }
-        });
-        */
+        // Setup search view
+        searchItem = menu.findItem(R.id.action_search);
+        android.support.v7.widget.SearchView searchView = (android.support.v7.widget.SearchView) MenuItemCompat.getActionView(searchItem);
+        searchView.setOnQueryTextListener(this);
+        searchView.setQueryHint(getString(R.string.action_search));
         super.onCreateOptionsMenu(menu, inflater);
     }
 
@@ -238,14 +342,18 @@ public class YouTubeSearchFragment extends Fragment implements
         //mSearchText.setText(newText);
         //mSearchText.setTextColor(Color.GREEN);
         Log.i(TAG, "onQueryTextChange: Query so far: " + newText);
+
         return true;
     }
 
-    boolean onQueryTextSubmit(String query) {
+    public boolean onQueryTextSubmit(String query) {
         //Toast.makeText(this, "Searching for: " + query + "...", Toast.LENGTH_SHORT).show();
         //mSearchText.setText("Searching for: " + query + "...");
         //mSearchText.setTextColor(Color.RED);
         Log.i(TAG, "onQueryTextSubmit: query:" + query);
+        //InputMethodManager imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
+        //imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+        searchFilter = query;
         if (query.length() > 0) {
             // create an async task to search
             nextSearchPageToken = null;
@@ -256,98 +364,25 @@ public class YouTubeSearchFragment extends Fragment implements
         return true;
     }
 
+    /**
+     * @return text entered in searchview
+     */
+    public String getSearchFilter() {
+        return searchFilter;
+    }
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        final MenuItem i = item;
         switch (item.getItemId()) {
-            case R.id.action_search: {
-
-                /*
-                item.setActionView(R.layout.search_param);
-                List<String> list = Config.getInstance().getYTSearchTextHistory();
-                String history[] = new String[list.size()];
-                history = list.toArray(history);
-                final AutoCompleteTextView txtSearch = (AutoCompleteTextView) item.getActionView().findViewById(R.id.search_edit_text);
-                final PopUpListAdapter adapter = new PopUpListAdapter(getActivity(), android.R.layout.simple_list_item_1, history);
-                txtSearch.setAdapter(adapter);
-
-                txtSearch.addTextChangedListener(new TextWatcher() {
-
-                    @Override
-                    public void onTextChanged(CharSequence cs, int arg1, int arg2, int arg3) {
-                        // When user changed the Text
-                        adapter.getFilter().filter(cs);
-                    }
-
-                    @Override
-                    public void beforeTextChanged(CharSequence arg0, int arg1, int arg2,
-                                                  int arg3) {
-                        // TODO Auto-generated method stub
-
-                    }
-
-                    @Override
-                    public void afterTextChanged(Editable arg0) {
-                        // TODO Auto-generated method stub
-                    }
-                });
-                //txtSearch.setText(lastSearchText);
-                txtSearch.setTextColor(Color.BLACK);
-                txtSearch.requestFocus();
-                // Setting an action listener
-                txtSearch.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-                    @Override
-                    public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                        Log.i(TAG, "onEditorAction:");
-                        if ((actionId == EditorInfo.IME_ACTION_SEARCH) || (event.getAction() == KeyEvent.ACTION_DOWN &&
-                                event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
-                            ((InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(
-                                    txtSearch.getWindowToken(), 0);
-                            i.collapseActionView();
-                            lastSearchText = v.getText().toString();
-                            if (lastSearchText.length() > 0) {
-                                // create an async task to search
-                                nextSearchPageToken = null;
-                                prevSearchPageToken = null;
-                                performYouTubeSearch(lastSearchText, nextSearchPageToken);
-                            }
-                            //listAdapter.notifyDataSetChanged();
-                            return true;
-                        } else {
-                            return false;
-                        }
-                    }
-
-                });
-                InputMethodManager imm = (InputMethodManager) getActivity().getSystemService(Context.INPUT_METHOD_SERVICE);
-                imm.toggleSoftInput(InputMethodManager.SHOW_FORCED,0);
-                //nextSearchPageToken = null;
-                //prevSearchPageToken = null;
-                //lastSearchText = "Quang Le";
-                //performYouTubeSearch(lastSearchText, nextSearchPageToken);
-                */
-            }
+            case R.id.action_search:
             break;
-
             default:
                 break;
         }
 
         return super.onOptionsItemSelected(item);
     }
-/*
-    @Override
-    public void performSearch(String query) {
-        Log.i(TAG, "performSearch: query string = " + query);
-        if (query.length() > 0) {
-            // create an async task to search
-            nextSearchPageToken = null;
-            prevSearchPageToken = null;
-            lastSearchText = query;
-            performYouTubeSearch(lastSearchText, nextSearchPageToken);
-        }
-    }
-*/
+
     @Override
     public void updateSearchResultList(String searchText, String prevPgToken, String nextPgToken) {
         prevSearchPageToken = prevPgToken;
@@ -463,6 +498,7 @@ public class YouTubeSearchFragment extends Fragment implements
         searchParam[0] = searchTerm;
         searchParam[1] = nextPageToken;
         searchParam[2] = getResources().getString(R.string.app_name);
+        loadingNewSearchResult = true;
         ytSearchTask.execute(searchParam);
 
         //setting timeout thread for async task

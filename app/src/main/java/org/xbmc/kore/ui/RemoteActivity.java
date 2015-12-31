@@ -349,7 +349,8 @@ public class RemoteActivity extends BaseActivity
                     break;
                 case 3:
                     toolbar.setTitle(R.string.youtube);
-                    break;            }
+                    break;
+            }
         }
     }
 
