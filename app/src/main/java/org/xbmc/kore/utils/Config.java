@@ -21,6 +21,7 @@ public class Config {
     static final String playlistDirNet = "Net";
     static final String playlistDirLocal = "Local";
     public static final String ytSearchResultFile = "SearchResult.json";
+    public static final String localMediaListFile = "LocalMediaList.json";
     public static final String LAST_SEARCH_TEXT = "lastSearchText";
     public static final String PREV_SEARCH_TOKEN = "prevSearchPageToken";
     public static final String NEXT_SEARCH_TOKEN = "nextSearchPageToken";
@@ -124,6 +125,10 @@ public class Config {
                 "/" + appDirInSDCard + "/" + playlistDir + "/";
     }
 
+    public static String getLocalMediaListFile() {
+        return Environment.getExternalStorageDirectory().getPath() +
+                "/" + appDirInSDCard + "/" + playlistDir + "/" + playlistDirLocal + "/" + localMediaListFile;
+    }
 
     public long getmaxNumOfSearchResults() {
         return this.maxNumOfSearchResults;

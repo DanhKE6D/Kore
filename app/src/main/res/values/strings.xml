@@ -189,6 +189,7 @@
     <string name="remote">Remote</string>
     <string name="playlist">Playlist</string>
     <string name="youtube">YouTube</string>
+    <string name="local_media">Local Media</string>
 
     <string name="season_episode_abbrev">s%1$02de%2$02d</string>
     <string name="season_episode">Season %1$02d | Episode %2$02d</string>
@@ -238,7 +239,7 @@
     <string name="new_search">"New search</string>
     <string name="error_reading_search_result">Error fetching search results</string>
     <string name="search_result_empty">Search results empty</string>
-
+    <string name="local_media_list_empty">Media list empty</string>
 
     <string name="no_movies_found_refresh">No movies found\n\nSwipe down to refresh</string>
     <string name="no_tvshows_found_refresh">No TV Shows found\n\nSwipe down to refresh</string>
@@ -270,6 +271,7 @@
     <string name="action_search_music_videos">Search videos</string>
 
     <string name="yt_play_item">Play</string>
+    <string name="yt_queue_item">Queue</string>
     <string name="yt_queue_all_items">Queue from here</string>
 
     <string name="add_to_playlist">Add to playlist</string>
@@ -376,5 +378,8 @@
     <string name="search_text"></string>
     <string name="menu_item_search_action_hint">Your Search Query</string>
     <string name="menu_item_search_action_menu_text">Search</string>
+
+    <string name="convert_to_media_list">Convert to Media List</string>
+    <string name="load_media_list_from_file">Load from file</string>
 
 </resources>

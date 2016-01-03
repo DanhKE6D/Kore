@@ -1,6 +1,7 @@
 package org.xbmc.kore.ui;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.TypedArray;
@@ -11,6 +12,7 @@ import android.support.v4.app.LoaderManager;
 import android.support.v4.content.Loader;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.widget.CardView;
+import android.support.v7.widget.SearchView;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -19,17 +21,19 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AbsListView;
 import android.widget.AdapterView;
 import android.widget.BaseAdapter;
+import android.widget.Filter;
+import android.widget.Filterable;
 import android.widget.GridView;
 import android.widget.ImageView;
 import android.widget.ListAdapter;
 import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.RelativeLayout;
-import android.support.v7.widget.SearchView;
 import android.widget.TextView;
+
+import com.google.api.services.youtube.model.PlaylistItem;
 
 import org.xbmc.kore.R;
 import org.xbmc.kore.host.HostConnectionObserver;
@@ -43,57 +47,51 @@ import org.xbmc.kore.jsonrpc.type.GUIType;
 import org.xbmc.kore.jsonrpc.type.ListType;
 import org.xbmc.kore.jsonrpc.type.PlayerType;
 import org.xbmc.kore.jsonrpc.type.PlaylistType;
+import org.xbmc.kore.model.LocalMediaDataHandler;
+import org.xbmc.kore.model.LocalMediaItem;
+import org.xbmc.kore.model.MediaPlayList;
+import org.xbmc.kore.ui.views.AsyncLocalMediaListReader;
 import org.xbmc.kore.utils.CharacterDrawable;
 import org.xbmc.kore.utils.Config;
+import org.xbmc.kore.utils.FileUtils;
 import org.xbmc.kore.utils.LogUtils;
-import org.xbmc.kore.utils.SharedPreferencesUtils;
 import org.xbmc.kore.utils.UIUtils;
-import org.xbmc.kore.youtube.AsyncVideoListReader;
-import org.xbmc.kore.youtube.PerformYouTubeSearchTask;
-import org.xbmc.kore.youtube.model.YouTubeVideo;
-import org.xbmc.kore.youtube.model.YouTubeVideoDataHandler;
+import org.xbmc.kore.utils.Utils;
 
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
+
+import ar.com.daidalos.afiledialog.FileChooserDialog;
 import butterknife.ButterKnife;
 import butterknife.InjectView;
 
 /**
  * Created by danh.le on 8/23/15.
  */
-public class YouTubeSearchFragment extends Fragment implements
-        LoaderManager.LoaderCallbacks<YouTubeVideoDataHandler>,
-        PerformYouTubeSearchTask.OnUpdateSearchResultList,
+public class LocalMediaFragment extends Fragment implements
+        LoaderManager.LoaderCallbacks<LocalMediaDataHandler>,
         HostConnectionObserver.PlayerEventsObserver,
-        AbsListView.OnScrollListener,
         SearchView.OnQueryTextListener {
-    private static final String TAG = YouTubeSearchFragment.class.getSimpleName();
-    static final int LOAD_YT_VIDEOLIST = 1001;
+    private static final String TAG = LocalMediaFragment.class.getSimpleName();
+    static final int LOAD_LOCAL_MEDIA_LIST = 1010;
 
-    final int myLoaderID = LOAD_YT_VIDEOLIST;
+    final int myLoaderID = LOAD_LOCAL_MEDIA_LIST;
     ListView listView;
-    String lastSearchText;
-    String prevSearchPageToken, nextSearchPageToken;
-    AsyncVideoListReader asyncVideoListReader;
-    List<YouTubeVideo> videoList = new ArrayList<>();
-    Queue<YouTubeVideo> mediaQueue = new LinkedList<>();
+
+    AsyncLocalMediaListReader asyncLocalMediaListReader;
+    List<LocalMediaItem> mediaList = new ArrayList<>();
+    Queue<LocalMediaItem> mediaQueue = new LinkedList<>();
     enum PlaylistItemMode { None, InsertToPlaylist }
-    YouTubeSearchListAdapter vidSearchListAdapter;
+    LocalMediaListAdapter mediaListAdapter;
     PlaylistItemMode playlistItemMode = PlaylistItemMode.None;
     MenuItem searchItem = null;
-
-    public enum ScrollDirection {
-        Down, Up, None
-    }
-
-    boolean loadingNewSearchResult = false;
-    ScrollDirection mScrollDir = ScrollDirection.None;
-    boolean mScrollState = false;
-    int mLastFirstVisibleItem = 0;
-    static int scrollingUpCount = 0;
+    enum FileSelectionMode { None, FileLoad, FileSave}
+    FileSelectionMode fileSelectionMode = FileSelectionMode.None;
 
     /**
      * Host manager from which to get info about the current XBMC
@@ -109,10 +107,7 @@ public class YouTubeSearchFragment extends Fragment implements
      * Handler on which to post RPC callbacks
      */
     private Handler callbackHandler = new Handler();
-    /**
-     * The current active player id
-     */
-    private int currentActivePlayerId = -1;
+
     // The search filter to use in the loader
     private String searchFilter = null;
 
@@ -120,39 +115,23 @@ public class YouTubeSearchFragment extends Fragment implements
      * Injectable views
      */
     @InjectView(R.id.info_panel) RelativeLayout infoPanel;
-    @InjectView(R.id.playlist) GridView ytSearchGridView;
+    @InjectView(R.id.playlist) GridView localMediaGridView;
     @InjectView(R.id.info_title) TextView infoTitle;
     @InjectView(R.id.info_message) TextView infoMessage;
 
     @Override
-    public Loader<YouTubeVideoDataHandler> onCreateLoader(int arg0, Bundle arg1) {
+    public Loader<LocalMediaDataHandler> onCreateLoader(int arg0, Bundle arg1) {
         Log.i(TAG, "onCreateLoader: LoaderID = " + myLoaderID + " videoFile = " + Config.getSearchResultFile());
-        asyncVideoListReader = new AsyncVideoListReader(YouTubeSearchFragment.this.getActivity(), Config.getSearchResultFile());
-        asyncVideoListReader.forceLoad();
-        return asyncVideoListReader;
+        asyncLocalMediaListReader = new AsyncLocalMediaListReader(LocalMediaFragment.this.getActivity(), Config.getLocalMediaListFile());
+        asyncLocalMediaListReader.forceLoad();
+        return asyncLocalMediaListReader;
     }
 
     @Override
-    public void onLoadFinished(Loader<YouTubeVideoDataHandler> arg0, YouTubeVideoDataHandler arg1) {
+    public void onLoadFinished(Loader<LocalMediaDataHandler> arg0, LocalMediaDataHandler arg1) {
         Log.i(TAG, "onLoadFinished: LoaderID = " + myLoaderID);
-        videoList = arg1.getData();
-        setSearchListAdapter();
-        //if (mScrollDir == ScrollDirection.Up) {
-            // select the last element
-            int middle = (ytSearchGridView.getAdapter().getCount() - 1) / 2;
-            ytSearchGridView.setSelection(middle);
-            YouTubeVideo vid = (YouTubeVideo) ytSearchGridView.getAdapter().getItem(middle);
-            Log.i(TAG, "scrolling UP, setting listview to middle item (" + middle + ")" + ", title = " +
-                    vid.getTitle());
-
-        //}
-        //else if (mScrollDir == ScrollDirection.Down) {
-        //    //ytSearchGridView.setSelection(0);
-        //    YouTubeVideo vid = (YouTubeVideo) ytSearchGridView.getAdapter().getItem(0);
-        //    Log.i(TAG, "scrolling DOWN, setting listview to first item (0), title = " +
-        //            vid.getTitle());
-        //}
-        resetListViewScrollingParams();
+        mediaList = arg1.getData();
+        setMediaListAdapter();
         // see if the search item is open. If it is, collapse it
         if (searchItem != null) {
             searchItem.collapseActionView();
@@ -160,98 +139,8 @@ public class YouTubeSearchFragment extends Fragment implements
     }
 
     @Override
-    public void onLoaderReset(Loader<YouTubeVideoDataHandler> arg0) {
-        vidSearchListAdapter = null;
-    }
-
-
-
-    void resetListViewScrollingParams() {
-        ////////////////////////////////////////////////////////////////////////
-        // reset these variables so that listview onscroll would work correctly
-        ////////////////////////////////////////////////////////////////////////
-        loadingNewSearchResult = false;
-        mLastFirstVisibleItem = 0;
-        scrollingUpCount = 0;           // reset scrolling direction
-        mScrollDir = ScrollDirection.None;
-
-    }
-
-    @Override
-    public void onScroll(AbsListView view,
-                         int firstVisible, int visibleCount, int totalCount) {
-        Log.i(TAG, "onScroll: scrollState = " + mScrollState + ", firstVisible = " + firstVisible + ", visibleCount = " + visibleCount + ", totalCount = " + totalCount);
-        if (loadingNewSearchResult) {
-            Log.i(TAG, "onScroll: Still waiting for previous load request");
-        }
-        else {
-            if (mScrollState && (mScrollDir == ScrollDirection.Down)) {
-                // scroll down
-                boolean loadMore = /* maybe add a padding */
-                        firstVisible + visibleCount >= totalCount;
-                if ((nextSearchPageToken != null) && (nextSearchPageToken.length() > 0)) {
-                    if (loadMore) {
-                        Log.i(TAG, "Scroll DOWN: Need to load NEXT search results. nextSearchPageToken = " + nextSearchPageToken);
-                        performYouTubeSearch(lastSearchText, nextSearchPageToken);
-                    }
-                }
-                else
-                    Log.i(TAG, "Scroll DOWN: nextSearchPageToken is now NULL");
-
-            }
-
-            else if (mScrollState && (mScrollDir == ScrollDirection.Up)) {
-                // scroll up
-                if (firstVisible == 0) {
-                    if ((prevSearchPageToken != null) && (prevSearchPageToken.length() > 0)) {
-                        Log.i(TAG, "Scroll UP: Need to load previous search results. prevSearchPageToken = " + prevSearchPageToken);
-                        performYouTubeSearch(lastSearchText, prevSearchPageToken);
-                    }
-                    else
-                        Log.i(TAG, "Scroll UP: prevSearchPageToken is now NULL");
-                }
-            }
-        }
-    }
-
-
-    @Override
-    public void onScrollStateChanged(AbsListView view, int scrollState) {
-        final GridView lw = (GridView) view;
-
-        if (scrollState == SCROLL_STATE_IDLE) {
-            //Log.i(TAG, "scrolling stopped...");
-            mScrollState = false;
-            scrollingUpCount = 0;
-        }
-        else {
-            mScrollState = true;
-        }
-
-        //if (view.getId() == lw.getId()) {
-        final int currentFirstVisibleItem = lw.getFirstVisiblePosition();
-        if (currentFirstVisibleItem > mLastFirstVisibleItem) {
-            mScrollDir = ScrollDirection.Down;
-            Log.i(TAG, "scrolling down...");
-        } else if (currentFirstVisibleItem < mLastFirstVisibleItem) {
-            mScrollDir = ScrollDirection.Up;
-            Log.i(TAG, "scrolling up...");
-        } else if ((currentFirstVisibleItem == 0) && (mLastFirstVisibleItem == 0)) {
-            if (mScrollState && (scrollingUpCount > 0)) {
-                Log.i(TAG, "special case scrolling up...");
-                mScrollDir = ScrollDirection.Up;
-            }
-            else
-                scrollingUpCount++;
-        }
-        Log.i(TAG, "onScrollStateChanged: scrollState = " + scrollState + ", currentFirstVisibleItem = " + currentFirstVisibleItem + ", mLastFirstVisibleItem = " + mLastFirstVisibleItem);
-        if ((currentFirstVisibleItem == 0) && mScrollState && (mScrollDir == ScrollDirection.Up) && ((prevSearchPageToken != null) &&  (prevSearchPageToken.length() > 0))) {
-            Log.i(TAG, "onScrollStateChanged: Need to load PREVIOUS search results. prevSearchPageToken = " + prevSearchPageToken);
-            performYouTubeSearch(lastSearchText, prevSearchPageToken);
-        }
-        mLastFirstVisibleItem = currentFirstVisibleItem;
-        //}
-
+    public void onLoaderReset(Loader<LocalMediaDataHandler> arg0) {
+        mediaListAdapter = null;
     }
 
 
@@ -260,32 +149,31 @@ public class YouTubeSearchFragment extends Fragment implements
         super.onCreate(savedInstanceState);
         hostManager = HostManager.getInstance(getActivity());
         hostConnectionObserver = hostManager.getHostConnectionObserver();
-        Log.i(TAG, "YouTubeSearchFragment.onCreate");
+        Log.i(TAG, "LocalMediaFragment.onCreate");
     }
 
-    void setSearchListAdapter() {
-        vidSearchListAdapter = new YouTubeSearchListAdapter();
-        ytSearchGridView.setAdapter(vidSearchListAdapter);
+    void setMediaListAdapter() {
+        mediaListAdapter = new LocalMediaListAdapter();
+        localMediaGridView.setAdapter(mediaListAdapter);
 
         // When clicking on an item, play it
-        ytSearchGridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        localMediaGridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 // click an item, add it to the playlist
                 PlaylistType.Item item = new PlaylistType.Item();
-                item.file = videoList.get(position).getWebPlayerUrl();
-                queueMedia(item);
+                //item.file = mediaList.get(position).getWebPlayerUrl();
+                //queueMedia(item);
 
             }
         });
-        ytSearchGridView.setOnScrollListener(this);
-
-        if ((videoList == null) || (videoList.size() == 0)) {
+        localMediaGridView.setTextFilterEnabled(true);
+        if ((mediaList == null) || (mediaList.size() == 0)) {
             displayEmptySearchResultMessage();
         }
         else {
             switchToPanel(R.id.playlist);
-            vidSearchListAdapter.setSearchListItems(videoList);
+            mediaListAdapter.setLocalMediaListItems(mediaList);
         }
     }
 
@@ -293,7 +181,7 @@ public class YouTubeSearchFragment extends Fragment implements
     public View onCreateView(LayoutInflater inflater, ViewGroup container,Bundle savedInstanceState) {
         ViewGroup root = (ViewGroup) inflater.inflate(R.layout.fragment_playlist, container, false);
         ButterKnife.inject(this, root);
-        setSearchListAdapter();
+        setMediaListAdapter();
         getActivity().getSupportLoaderManager().initLoader(myLoaderID, null, this);
         return root;
     }
@@ -308,9 +196,6 @@ public class YouTubeSearchFragment extends Fragment implements
         super.onActivityCreated(savedInstanceState);
         // We have options
         setHasOptionsMenu(true);
-        lastSearchText = SharedPreferencesUtils.getString(getActivity(), Config.LAST_SEARCH_TEXT, "");
-        prevSearchPageToken = SharedPreferencesUtils.getString(getActivity(), Config.PREV_SEARCH_TOKEN, "");
-        nextSearchPageToken = SharedPreferencesUtils.getString(getActivity(), Config.NEXT_SEARCH_TOKEN, "");
     }
 
     @Override
@@ -327,10 +212,10 @@ public class YouTubeSearchFragment extends Fragment implements
 
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        inflater.inflate(R.menu.youtube, menu);
+        inflater.inflate(R.menu.local_media_list, menu);
         // Setup search view
         searchItem = menu.findItem(R.id.action_search);
-        android.support.v7.widget.SearchView searchView = (android.support.v7.widget.SearchView) MenuItemCompat.getActionView(searchItem);
+        SearchView searchView = (SearchView) MenuItemCompat.getActionView(searchItem);
         searchView.setOnQueryTextListener(this);
         searchView.setQueryHint(getString(R.string.action_search));
         super.onCreateOptionsMenu(menu, inflater);
@@ -342,7 +227,7 @@ public class YouTubeSearchFragment extends Fragment implements
         //mSearchText.setText(newText);
         //mSearchText.setTextColor(Color.GREEN);
         Log.i(TAG, "onQueryTextChange: Query so far: " + newText);
-
+        mediaListAdapter.getFilter().filter(newText);
         return true;
     }
 
@@ -356,10 +241,6 @@ public class YouTubeSearchFragment extends Fragment implements
         searchFilter = query;
         if (query.length() > 0) {
             // create an async task to search
-            nextSearchPageToken = null;
-            prevSearchPageToken = null;
-            lastSearchText = query;
-            performYouTubeSearch(lastSearchText, nextSearchPageToken);
         }
         return true;
     }
@@ -374,7 +255,19 @@ public class YouTubeSearchFragment extends Fragment implements
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
-            case R.id.action_search:
+            case R.id.action_cvt_to_media_list:
+                // convert to playlist to media list
+                {
+                fileSelectionMode = FileSelectionMode.FileLoad;
+                FileChooserDialog dialog = new FileChooserDialog(getActivity());
+                // Assign listener for the select event.
+                dialog.addListener(LocalMediaFragment.this.onFileSelectedListener);
+                // Define start folder.
+                dialog.loadFolder(Config.getPlaylistDirectory());
+                dialog.setShowConfirmation(true, false);
+                dialog.show();
+                // load will be performed in dialog callback
+                }
             break;
             default:
                 break;
@@ -383,26 +276,55 @@ public class YouTubeSearchFragment extends Fragment implements
         return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void updateSearchResultList(String searchText, String prevPgToken, String nextPgToken) {
-        prevSearchPageToken = prevPgToken;
-        nextSearchPageToken = nextPgToken;
-        lastSearchText = searchText;
-        Config.getInstance().setYTSearchTextParams(getActivity(), prevSearchPageToken, nextSearchPageToken, lastSearchText);
-        if (asyncVideoListReader == null) {
-            Log.i(TAG, "Starting new load");
+    // ---- Methods for display the results ----- //
+    private FileChooserDialog.OnFileSelectedListener onFileSelectedListener = new FileChooserDialog.OnFileSelectedListener() {
+        public void onFileSelected(Dialog source, File file) {
+            source.hide();
+            if (fileSelectionMode == FileSelectionMode.FileLoad) {
+                String playlistJSON = FileUtils.readFromFile(file);
+                final MediaPlayList playlistToConvert = Config.getGson().fromJson(playlistJSON, MediaPlayList.class);
+                if (playlistToConvert.playlist.size() > 0) {
+                    // fork a runnable to convert this playlist to media list
+                    mediaList = new ArrayList<LocalMediaItem>();
+                    Thread t = new Thread() {
+                        public void run() {
+                            for (ListType.ItemsAll item : playlistToConvert.playlist) {
+                                mediaList.add(new LocalMediaItem(item.label, item.file, item.thumbnail, item.runtime));
+                            }
+                            // save this result file to the default file
+                            Collections.sort(mediaList);
+                            File mediaFile = new File(Config.getLocalMediaListFile());
+                            FileUtils.savePlaylistToFile(mediaFile, Config.getGson().toJson(mediaList));
+                        }
+                    };
+                    try {
+                        t.start();
+                        t.join();
+                        Log.i(TAG, "There are " + mediaList.size() + " media items in this list");
+                        setMediaListAdapter();
+                    } catch (InterruptedException e) {
+                        Log.e(TAG, "Thread did not complete exception");
+                    }
+                }
 
-            asyncVideoListReader = new AsyncVideoListReader(YouTubeSearchFragment.this.getActivity(), Config.getSearchResultFile());
-            asyncVideoListReader.forceLoad();
+            }
+            else if (fileSelectionMode == FileSelectionMode.FileSave) {
+                // save current list
+            }
+
 
         }
-        else {
-            Log.i(TAG, "Restarting load");
-            // set new dbFileName
-            asyncVideoListReader.setNewVideoListFileName(Config.getSearchResultFile());
+        public void onFileSelected(Dialog source, File folder, String name) {
+            source.hide();
+            File newFile = new File(Config.getPlaylistDirectory() + "/" + folder.getName() + "/" + name);
+            //Toast toast = Toast.makeText(getActivity(), "File created: " + folder.getName() + "/" + name, Toast.LENGTH_LONG);
+            //toast.show();
+            // can not be read from file -- we are creating new one
+            if (fileSelectionMode == FileSelectionMode.FileSave) {
+                // save it
+            }
         }
-        getActivity().getSupportLoaderManager().restartLoader(myLoaderID, null, this);
-    }
+    };
 
     /**
      * Switches the info panel shown (they are exclusive)
@@ -412,11 +334,11 @@ public class YouTubeSearchFragment extends Fragment implements
         switch (panelResId) {
             case R.id.info_panel:
                 infoPanel.setVisibility(View.VISIBLE);
-                ytSearchGridView.setVisibility(View.GONE);
+                localMediaGridView.setVisibility(View.GONE);
                 break;
             case R.id.playlist:
                 infoPanel.setVisibility(View.GONE);
-                ytSearchGridView.setVisibility(View.VISIBLE);
+                localMediaGridView.setVisibility(View.VISIBLE);
                 break;
         }
     }
@@ -436,7 +358,7 @@ public class YouTubeSearchFragment extends Fragment implements
      */
     private void displayEmptySearchResultMessage() {
         switchToPanel(R.id.info_panel);
-        infoTitle.setText(R.string.search_result_empty);
+        infoTitle.setText(R.string.local_media_list_empty);
         infoMessage.setText(null);
     }
     void switchToFullScreen() {
@@ -464,65 +386,6 @@ public class YouTubeSearchFragment extends Fragment implements
      */
     private ApiCallback<String> defaultStringActionCallback = ApiMethod.getDefaultActionCallback();
 
-    /**
-     * Callback for clear and insert items to playlist
-     */
-    private ApiCallback<String> StringActionCallback = new ApiCallback<String>() {
-        @Override
-        public void onSuccess(String result) {
-            // successfully insert one item into the playlist
-            if (playlistItemMode == PlaylistItemMode.InsertToPlaylist) {
-                YouTubeVideo v = mediaQueue.poll();
-                if (v != null) {
-                    PlaylistType.Item item = new PlaylistType.Item();
-                    item.file = v.getWebPlayerUrl();
-                    queueMedia(item);
-                }
-                else {
-                    playlistItemMode = PlaylistItemMode.None;
-                }
-            }
-        }
-
-        @Override
-        public void onError(int errorCode, String description) {
-            // got an error, abort everything
-            LogUtils.LOGE(TAG, "Callback error, code = " + errorCode + ", description = " + description);
-            // TODO: need to deal with error during clear and insert item to playlist
-        }
-    };
-    private void performYouTubeSearch(String searchTerm, String nextPageToken) {
-        final PerformYouTubeSearchTask ytSearchTask = new PerformYouTubeSearchTask(getActivity(), this, Config.getSearchResultFile(),
-                Config.getInstance().getYouTubeMediaSearchMode());
-        String[] searchParam = new String[3];
-        searchParam[0] = searchTerm;
-        searchParam[1] = nextPageToken;
-        searchParam[2] = getResources().getString(R.string.app_name);
-        loadingNewSearchResult = true;
-        ytSearchTask.execute(searchParam);
-
-        //setting timeout thread for async task
-        Thread timerThread = new Thread(){
-            public void run(){
-                try {
-                    ytSearchTask.get(60000, TimeUnit.MILLISECONDS);  //set time in millisecond(in this timeout is 90 seconds
-
-                } catch (Exception e) {
-                    ytSearchTask.cancel(true);
-                    ytSearchTask.cancelDialog();
-                    getActivity().runOnUiThread(new Runnable() {
-                        public void run() {
-                            // send failed -- should add some notification here
-                            UIUtils.errorMesgBox(getActivity(), "Search YouTube Error",
-                                    "Timeout error during searching YouTube");
-                        }
-                    });
-
-                }
-            }
-        };
-        timerThread.start();
-    }
 
     /**
      * Last call results
@@ -578,51 +441,43 @@ public class YouTubeSearchFragment extends Fragment implements
     public void inputOnInputRequested(String title, String type, String value) {}
     public void observerOnStopObserving() {}
 
-    void queueMedia(PlaylistType.Item item) {
+    void queueMedia(int pos) {
+        PlaylistType.Item item = new PlaylistType.Item();
+        item.file = mediaList.get(pos).getMediaSource();
         Log.d(TAG, "Item selected = " + item.file);
         Playlist.Add action = new Playlist.Add(PlaylistType.VIDEO_PLAYLISTID, item);
-        action.execute(hostManager.getConnection(), StringActionCallback, callbackHandler);
+        action.execute(hostManager.getConnection(), defaultStringActionCallback, callbackHandler);
     }
 
-    void playYouTubeItem(int pos) {
+    void playLocalMediaItem(int pos) {
         PlaylistType.Item item = new PlaylistType.Item();
-        item.file = videoList.get(pos).getWebPlayerUrl();
-        Log.d(TAG, "Item selected = " + item.file);
+        item.file = mediaList.get(pos).getMediaSource();
+        //Log.d(TAG, "Item selected = " + item.file);
         Player.Open action = new Player.Open(item);
-        action.execute(hostManager.getConnection(), StringActionCallback, callbackHandler);
+        action.execute(hostManager.getConnection(), defaultStringActionCallback, callbackHandler);
     }
 
     /**
      * Adapter used to show the hosts in the ListView
      */
-    private class YouTubeSearchListAdapter extends BaseAdapter
-            implements ListAdapter {
+    private class LocalMediaListAdapter extends BaseAdapter
+            implements ListAdapter, Filterable {
+
         private View.OnClickListener searchItemMenuClickListener = new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 final int position = (Integer)v.getTag();
                 final PopupMenu popupMenu = new PopupMenu(getActivity(), v);
-                popupMenu.getMenuInflater().inflate(R.menu.youtube_item, popupMenu.getMenu());
+                popupMenu.getMenuInflater().inflate(R.menu.medialist_item, popupMenu.getMenu());
                 popupMenu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
                     @Override
                     public boolean onMenuItemClick(MenuItem item) {
                         switch (item.getItemId()) {
-                            case R.id.action_play_item:
-                                playYouTubeItem(position);
+                            case R.id.action_medialist_play_item:
+                                playLocalMediaItem(position);
                                 return true;
-                            case R.id.action_queue_from_here:
-                                mediaQueue.clear();
-                                playlistItemMode = PlaylistItemMode.InsertToPlaylist;
-                                int loc = position;
-                                YouTubeVideo v;
-                                for (int i = position + 1; i < videoList.size(); i++) {
-                                    v = videoList.get(i);
-                                    mediaQueue.add(v);
-                                }
-                                // start playing the selected one, then queue the rest make sure to queue
-                                // the selected on last so the it does not lose its place in the queue
-                                mediaQueue.add(videoList.get(loc));
-                                playYouTubeItem(loc);
+                            case R.id.action_medialist_queue_item:
+                                queueMedia(position);
                                 return true;
                         }
                         return false;
@@ -635,15 +490,18 @@ public class YouTubeSearchFragment extends Fragment implements
         /**
          * The playlist items
          */
-        List<YouTubeVideo> youtubeItems;
+        List<LocalMediaItem> localMediaItems;
+        private List <LocalMediaItem> origData;
+
         int artWidth = getResources().getDimensionPixelSize(R.dimen.playlist_art_width);
         int artHeight = getResources().getDimensionPixelSize(R.dimen.playlist_art_heigth);
 
         int cardBackgroundColor, selectedCardBackgroundColor;
 
-        public YouTubeSearchListAdapter(List<YouTubeVideo> items) {
+        public LocalMediaListAdapter(List<LocalMediaItem> items) {
             super();
-            this.youtubeItems = items;
+            this.localMediaItems = items;
+            this.origData = items;
 
             Resources.Theme theme = getActivity().getTheme();
             TypedArray styledAttributes = theme.obtainStyledAttributes(new int[] {
@@ -654,7 +512,7 @@ public class YouTubeSearchFragment extends Fragment implements
             styledAttributes.recycle();
         }
 
-        public YouTubeSearchListAdapter() {
+        public LocalMediaListAdapter() {
             this(null);
         }
 
@@ -664,8 +522,9 @@ public class YouTubeSearchFragment extends Fragment implements
          *
          * @param items Items
          */
-        public void setSearchListItems(List<YouTubeVideo> items) {
-            this.youtubeItems = items;
+        public void setLocalMediaListItems(List<LocalMediaItem> items) {
+            this.localMediaItems = items;
+            this.origData = items;
             notifyDataSetChanged();
         }
 
@@ -673,25 +532,25 @@ public class YouTubeSearchFragment extends Fragment implements
          * get the list of videos
          * @return playlistItems
          */
-        public List<YouTubeVideo> getSearchListItems() {
-            return this.youtubeItems;
+        public List<LocalMediaItem> getLocalMediaListItems() {
+            return this.localMediaItems;
         }
 
         @Override
         public int getCount() {
-            if (youtubeItems == null) {
+            if (localMediaItems == null) {
                 return 0;
             } else {
-                return youtubeItems.size();
+                return localMediaItems.size();
             }
         }
 
         @Override
-        public YouTubeVideo getItem(int position) {
-            if (youtubeItems == null) {
+        public LocalMediaItem getItem(int position) {
+            if (localMediaItems == null) {
                 return null;
             } else {
-                return youtubeItems.get(position);
+                return localMediaItems.get(position);
             }
         }
 
@@ -706,12 +565,65 @@ public class YouTubeSearchFragment extends Fragment implements
         }
 
         @Override
+        public Filter getFilter() {
+            Filter myFilter =  new Filter() {
+                @Override
+                protected FilterResults performFiltering(CharSequence cs) {
+                    FilterResults results = new FilterResults();
+                    //If there's nothing to filter on, return the original data for your list
+                    if (cs == null || cs.length() == 0) {
+                        results.values = origData;
+                        results.count = origData.size();
+                    }
+                    else  {
+                        ArrayList<LocalMediaItem> filterResultsData = new ArrayList<LocalMediaItem>();
+
+                        for(LocalMediaItem s : origData) {
+                            //In this loop, you'll filter through originalData and compare each item to charSequence.
+                            //If you find a match, add it to your new ArrayList
+                            //I'm not sure how you're going to do comparison, so you'll need to fill out this conditional
+                            //if (data.getName().toUpperCase().contains(cs.toString().toUpperCase()) ||
+                            //    data.getSinger().toUpperCase().contains(cs.toString().toUpperCase())) {
+                            //    Log.i(TAG, "data.getName() = " + data.getName() +
+                            //            ", data.getSinger() = " + data.getSinger() + ", cs = " + cs.toString());
+                            if (Utils.flattenToAscii(s.getTitle()).toUpperCase().contains(cs.toString().toUpperCase())) {
+                                Log.i(TAG, "Matched Title: s.getTitle() = " + s.getTitle() + ", cs = " + cs.toString());
+                                filterResultsData.add(s);
+                            }
+                            if (Utils.flattenToAscii(s.getArtist()).toUpperCase().contains(cs.toString().toUpperCase())) {
+                                Log.i(TAG, "Matched Artist: s.getArtist() = " + s.getArtist() + ", cs = " + cs.toString());
+                                filterResultsData.add(s);
+                            }
+                        }
+                        results.values = filterResultsData;
+                        results.count = filterResultsData.size();
+                        Log.i(TAG, "filterResultsData.size() = " + filterResultsData.size());
+                    }
+                    Log.i(TAG, "results.count = " + results.count);
+                    return results;
+                }
+
+                @Override
+                protected void publishResults(CharSequence cs, FilterResults filterResults) {
+                    if (filterResults.count == 0) {
+                        notifyDataSetInvalidated();
+                    }
+                    else {
+                        localMediaItems = (ArrayList<LocalMediaItem>) filterResults.values;
+                        notifyDataSetChanged();
+                    }
+                }
+            };
+            return myFilter;
+        }
+
+        @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             ViewHolder viewHolder;
 
             if (convertView == null) {
                 convertView = LayoutInflater.from(getActivity())
-                        .inflate(R.layout.grid_item_playlist, parent, false);
+                        .inflate(R.layout.grid_item_local_media, parent, false);
                 // ViewHolder pattern
                 viewHolder = new ViewHolder();
                 viewHolder.art = (ImageView)convertView.findViewById(R.id.art);
@@ -726,19 +638,18 @@ public class YouTubeSearchFragment extends Fragment implements
                 viewHolder = (ViewHolder) convertView.getTag();
             }
 
-            final YouTubeVideo item = this.getItem(position);
+            final LocalMediaItem item = this.getItem(position);
 
             String title = item.getTitle();
-            String artUrl = item.getThumbnails().get(Config.getInstance().getDefaultThumbSize());
-            String details = item.getUploader();
-            int duration = (int) item.getDuration();
+            String artUrl = item.getThumbnail();
+            int duration = item.getRuntime();
 
             viewHolder.title.setText(title);
-            viewHolder.details.setText(details);
+            viewHolder.details.setText(item.getAlbum() + ", " + item.getArtist());
             viewHolder.duration.setText((duration > 0) ? UIUtils.formatTime(duration) : "");
             viewHolder.position = position;
 
-            int cardColor = (position == ytSearchGridView.getCheckedItemPosition()) ?
+            int cardColor = (position == localMediaGridView.getCheckedItemPosition()) ?
                     selectedCardBackgroundColor: cardBackgroundColor;
             viewHolder.card.setCardBackgroundColor(cardColor);
 

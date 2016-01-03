@@ -16,12 +16,19 @@
 -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <item android:id="@+id/action_play_item"
-        android:title="@string/yt_play_item"
+    <item android:id="@+id/action_search"
+        android:title="@string/new_search"
+        android:icon="?attr/iconSearchToolbar"
+        android:queryHint="@string/action_search"
+        app:showAsAction="ifRoom|collapseActionView"
+        app:actionViewClass="android.support.v7.widget.SearchView"/>
+    <item android:id="@+id/action_cvt_to_media_list"
+        android:title="@string/convert_to_media_list"
         android:orderInCategory="1"
         app:showAsAction="never" />
-    <item android:id="@+id/action_queue_from_here"
-        android:title="@string/yt_queue_all_items"
-        android:orderInCategory="2"
+    <item android:id="@+id/action_load_media_list_from_file"
+        android:title="@string/load_media_list_from_file"
+        android:orderInCategory="1"
         app:showAsAction="never" />
 </menu>
+
